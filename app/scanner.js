@@ -1,8 +1,9 @@
 // SafeScanQRApp/src/screens/ScannerScreen.js
 import React from 'react';
-import { View, Text, TextInput, TouchableOpacity, SafeAreaView, StyleSheet } from 'react-native';
+import { SafeAreaView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 
-const ScannerScreen = ({ email }) => {
+const ScannerScreen = () => {
+  const [email, setEmail] = React.useState('');
   const [urlInput, setUrlInput] = React.useState('');
 
   const handleSubmit = () => {

@@ -1,14 +1,16 @@
 import React, { useEffect, useRef } from 'react';
 import {
-  View,
-  Text,
-  TouchableOpacity,
-  SafeAreaView,
-  StyleSheet,
   Animated,
   Dimensions,
+  SafeAreaView,
   ScrollView,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  View,
 } from 'react-native';
+
+import { useRouter } from 'expo-router';
 
 const { width } = Dimensions.get('window');
 
@@ -27,6 +29,7 @@ const qrPattern = [
 ];
 
 const HomePage = () => {
+  const router = useRouter();
   const scanLinePosition = useRef(new Animated.Value(0)).current;
 
   // Animate the scanning line
@@ -59,9 +62,8 @@ const HomePage = () => {
     // Navigate to sign up screen
   };
 
-  const handleStartScanning = () => {
-    console.log('Start Scanning pressed');
-    // Navigate to scanner
+ const handleStartScanning = () => {
+    router.push('/scanner' as any);
   };
 
   return (
