@@ -37,6 +37,13 @@
         <category android:name="android.intent.category.BROWSABLE"/>
         <category android:name="android.intent.category.DEFAULT"/>
       </intent-filter>
+      <!-- Google OAuth callback — reversed Android client ID -->
+      <intent-filter>
+        <action android:name="android.intent.action.VIEW"/>
+        <category android:name="android.intent.category.DEFAULT"/>
+        <category android:name="android.intent.category.BROWSABLE"/>
+        <data android:scheme="com.googleusercontent.apps.230684501873-1sfvmvo3po5l8iablpggv9opn5dn9t99"/>
+      </intent-filter>
     </activity>
   </application>
 </manifest>
