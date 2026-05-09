@@ -1,0 +1,80 @@
+{
+  "expo": {
+    "name": "SafeScan QR",
+    "slug": "safescan-android",
+    "scheme": "safescan",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/images/icon.png",
+    "splash": {
+      "image": "./assets/images/splash.png",
+      "backgroundColor": "#0a0a0f"
+    },
+    "android": {
+      "package": "com.safescan.qr",
+      "versionCode": 1,
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/images/icon-foreground.png",
+        "backgroundColor": "#0a0a0f"
+      },
+      "permissions": [
+        "CAMERA",
+        "INTERNET",
+        "VIBRATE",
+        "USE_BIOMETRIC"
+      ],
+      "intentFilters": [
+        {
+          "action": "VIEW",
+          "data": [
+            {
+              "scheme": "safescan"
+            }
+          ],
+          "category": [
+            "BROWSABLE",
+            "DEFAULT"
+          ]
+        },
+        {
+          "action": "VIEW",
+          "data": [
+            {
+              "scheme": "com.googleusercontent.apps.230684501873-1sfvmvo3po5l8iablpggv9opn5dn9t99"
+            }
+          ],
+          "category": [
+            "BROWSABLE",
+            "DEFAULT"
+          ]
+        }
+      ]
+    },
+    "plugins": [
+      [
+        "expo-router",
+        {
+          "root": "./app"
+        }
+      ],
+      [
+        "expo-camera",
+        {
+          "cameraPermission": "SafeScan needs camera to scan QR codes."
+        }
+      ],
+      "expo-secure-store",
+      "expo-notifications",
+      "expo-font",
+      "expo-web-browser"
+    ],
+    "extra": {
+      "router": {
+        "root": "./app"
+      },
+      "eas": {
+        "projectId": "158c14bd-c7e4-4a6d-a163-352e62777cc5"
+      }
+    }
+  }
+}

@@ -1,0 +1,23 @@
+node_modules/
+.expo/
+# Keep android source but ignore build output
+android/build/
+android/app/build/
+android/.gradle/
+android/local.properties
+android/app/debug.keystore
+.expo-*-check*/
+.expo-run-logs/
+dist/
+build/
+*.jks
+*.p8
+*.p12
+*.key
+*.mobileprovision
+.env
+.env.*
+!.env.example
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
