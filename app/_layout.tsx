@@ -7,12 +7,16 @@ import { Slot, usePathname, useRouter } from "expo-router";
 import * as Linking from "expo-linking";
 import { StatusBar } from "expo-status-bar";
 import { useFonts } from "expo-font";
+import { Auth0Provider } from "react-native-auth0";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { OfflineBanner } from "@/components/OfflineBanner";
 import { ServerWakeBanner } from "@/components/ServerWakeBanner";
 import { ToastProvider } from "@/components/shared/ToastProvider";
 import { colors } from "@/constants/theme";
 import { useAuthStore } from "@/stores/authStore";
+
+const AUTH0_DOMAIN = "dev-vnllaqnkkegs4xni.us.auth0.com";
+const AUTH0_CLIENT_ID = "1XfWxWOtDtN18JCCztRehzcJ1jOSBBic";
 
 const publicRoutes = ["/auth/google", "/legal/privacy", "/legal/terms"];
 
@@ -142,13 +146,15 @@ export default function RootLayout() {
 
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
-      <QueryClientProvider client={queryClient}>
-        <SafeAreaProvider>
-          <ToastProvider>
-            <RootNavigator fontsLoaded={fontsLoaded} />
-          </ToastProvider>
-        </SafeAreaProvider>
-      </QueryClientProvider>
+      <Auth0Provider domain={AUTH0_DOMAIN} clientId={AUTH0_CLIENT_ID}>
+        <QueryClientProvider client={queryClient}>
+          <SafeAreaProvider>
+            <ToastProvider>
+              <RootNavigator fontsLoaded={fontsLoaded} />
+            </ToastProvider>
+          </SafeAreaProvider>
+        </QueryClientProvider>
+      </Auth0Provider>
     </GestureHandlerRootView>
   );
 }

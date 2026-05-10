@@ -35,18 +35,6 @@
             "BROWSABLE",
             "DEFAULT"
           ]
-        },
-        {
-          "action": "VIEW",
-          "data": [
-            {
-              "scheme": "com.googleusercontent.apps.230684501873-1sfvmvo3po5l8iablpggv9opn5dn9t99"
-            }
-          ],
-          "category": [
-            "BROWSABLE",
-            "DEFAULT"
-          ]
         }
       ]
     },
@@ -66,7 +54,14 @@
       "expo-secure-store",
       "expo-notifications",
       "expo-font",
-      "expo-web-browser"
+      "expo-web-browser",
+      [
+        "react-native-auth0",
+        {
+          "domain": "dev-vnllaqnkkegs4xni.us.auth0.com",
+          "customScheme": "safescanauth0"
+        }
+      ]
     ],
     "extra": {
       "router": {

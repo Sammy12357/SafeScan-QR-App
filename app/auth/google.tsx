@@ -1,13 +1,25 @@
+import { useEffect } from "react";
 import { AntDesign } from "@expo/vector-icons";
 import { ActivityIndicator, Image, Pressable, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { useRouter } from "expo-router";
 import { theme } from "@/constants/theme";
 import { useGoogleAuth } from "@/hooks/useGoogleAuth";
 import { useAuthStore } from "@/stores/authStore";
 
 export default function GoogleAuthScreen() {
   const insets = useSafeAreaInsets();
+  const router = useRouter();
   const continueAsDemoUser = useAuthStore((state) => state.continueAsDemoUser);
+  const isAuthenticated = useAuthStore((state) => state.isAuthenticated);
+
+  // Belt-and-suspenders: whenever the store flips to authenticated (whether
+  // from Google sign-in, demo, or any other path) navigate into the app.
+  useEffect(() => {
+    if (isAuthenticated) {
+      router.replace("/(tabs)/scanner");
+    }
+  }, [isAuthenticated, router]);
   const { signIn, isLoading, error } = useGoogleAuth();
 
   return (

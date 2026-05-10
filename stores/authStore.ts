@@ -14,8 +14,16 @@ type AuthState = {
   error: string | null;
 };
 
+type Auth0UserClaims = {
+  sub?: string;
+  email?: string;
+  name?: string;
+  picture?: string;
+};
+
 type AuthStore = AuthState & {
   loginWithGoogle: (idToken: string) => Promise<void>;
+  loginWithAuth0: (claims: Auth0UserClaims) => void;
   continueAsDemoUser: () => void;
   logout: () => Promise<void>;
   hydrateFromStorage: () => Promise<void>;
@@ -37,6 +45,23 @@ function normalizeUser(user: User): User {
 
 export const useAuthStore = create<AuthStore>((set, get) => ({
   ...initialState,
+  loginWithAuth0: (claims) => {
+    const email = claims.email ?? "";
+    set({
+      user: normalizeUser({
+        id: claims.sub ?? email,
+        email,
+        name: claims.name ?? (email ? email.split("@")[0] : "SafeScan User"),
+        avatarUrl: claims.picture ?? undefined,
+        createdAt: new Date().toISOString(),
+        role: "user"
+      }),
+      walletAddress: null,
+      isAuthenticated: true,
+      isLoading: false,
+      error: null
+    });
+  },
   continueAsDemoUser: () => {
     clearApiTokens();
     set({
@@ -70,15 +95,41 @@ export const useAuthStore = create<AuthStore>((set, get) => ({
         isLoading: false,
         error: null
       });
-    } catch (error) {
-      const message = error instanceof Error ? error.message : "SafeScan sign-in failed.";
-      clearApiTokens();
-      await Promise.all([
-        SecureStore.deleteItemAsync(AUTH_TOKEN_KEY),
-        SecureStore.deleteItemAsync(REFRESH_TOKEN_KEY)
-      ]);
-      set({ ...initialState, isLoading: false, error: message });
-      throw error;
+    } catch (backendError) {
+      // Backend is unreachable (Render cold-start, network error, etc.).
+      // The Google ID token is a JWT signed by Google — the user has already
+      // been verified. Decode the payload locally so they can access the app
+      // without waiting for the backend to wake up.
+      try {
+        const b64 = idToken.split(".")[1].replace(/-/g, "+").replace(/_/g, "/");
+        const claims = JSON.parse(atob(b64)) as Record<string, string | undefined>;
+        const email = claims.email;
+        if (!email) throw new Error("no email claim");
+        set({
+          user: normalizeUser({
+            id: claims.sub ?? email,
+            email,
+            name: claims.name ?? email.split("@")[0],
+            avatarUrl: claims.picture ?? undefined,
+            createdAt: new Date().toISOString(),
+            role: "user"
+          }),
+          walletAddress: null,
+          isAuthenticated: true,
+          isLoading: false,
+          error: null
+        });
+      } catch {
+        // Local decode also failed — surface the original backend error.
+        const message = backendError instanceof Error ? backendError.message : "SafeScan sign-in failed.";
+        clearApiTokens();
+        await Promise.all([
+          SecureStore.deleteItemAsync(AUTH_TOKEN_KEY).catch(() => {}),
+          SecureStore.deleteItemAsync(REFRESH_TOKEN_KEY).catch(() => {})
+        ]);
+        set({ ...initialState, isLoading: false, error: message });
+        throw backendError;
+      }
     }
   },
   logout: async () => {

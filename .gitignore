@@ -4,6 +4,7 @@ node_modules/
 android/build/
 android/app/build/
 android/.gradle/
+android/.kotlin/
 android/local.properties
 android/app/debug.keystore
 .expo-*-check*/

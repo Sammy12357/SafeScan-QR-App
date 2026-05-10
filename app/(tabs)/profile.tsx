@@ -4,6 +4,7 @@ import { Feather } from "@expo/vector-icons";
 import * as ImagePicker from "expo-image-picker";
 import { useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { useAuth0 } from "react-native-auth0";
 import { Button } from "@/components/ui/Button";
 import { tiers } from "@/constants/tiers";
 import { theme } from "@/constants/theme";
@@ -12,6 +13,8 @@ import { useAirdropStore } from "@/stores/airdropStore";
 import { useAuthStore } from "@/stores/authStore";
 import { useScanStore } from "@/stores/scanStore";
 import { useWallet } from "@/hooks/useWallet";
+
+const AUTH0_CUSTOM_SCHEME = "safescanauth0";
 
 function initialsFor(name?: string | null, email?: string | null) {
   const source = (name?.trim() || email?.split("@")[0] || "SafeScan").replace(/[^a-zA-Z0-9 ]/g, " ");
@@ -66,6 +69,7 @@ export default function ProfileScreen() {
   const referral = useAirdropStore((state) => state.referral);
   const fetchAirdropStatus = useAirdropStore((state) => state.fetchStatus);
   const { connect, disconnect, publicKey, isConnected, isConnecting } = useWallet();
+  const { clearSession, clearCredentials } = useAuth0();
   const [avatarUri, setAvatarUri] = useState(user?.avatarUrl ?? null);
   const [isDeleting, setIsDeleting] = useState(false);
   const [isSigningOut, setIsSigningOut] = useState(false);
@@ -112,9 +116,26 @@ export default function ProfileScreen() {
     }
   };
 
+  const clearAuth0Session = async () => {
+    if (user?.id === "demo-user") return;
+
+    try {
+      await clearSession({}, { customScheme: AUTH0_CUSTOM_SCHEME });
+    } catch {
+      // Local logout should still complete if the browser logout is cancelled.
+    }
+
+    try {
+      await clearCredentials();
+    } catch {
+      // Credentials may already be absent.
+    }
+  };
+
   const handleSignOut = async () => {
     setIsSigningOut(true);
     try {
+      await clearAuth0Session();
       await logout();
       router.replace("/auth/google");
     } finally {
@@ -132,6 +153,7 @@ export default function ProfileScreen() {
           setIsDeleting(true);
           try {
             await api.user.delete();
+            await clearAuth0Session();
             await logout();
             router.replace("/auth/google");
           } catch (error) {
