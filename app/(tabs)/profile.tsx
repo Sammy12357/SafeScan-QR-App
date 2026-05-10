@@ -68,6 +68,8 @@ export default function ProfileScreen() {
   const airdropStatus = useAirdropStore((state) => state.status);
   const referral = useAirdropStore((state) => state.referral);
   const fetchAirdropStatus = useAirdropStore((state) => state.fetchStatus);
+  const apiSessionVersion = useAuthStore((state) => state.apiSessionVersion);
+  const hasBackendSession = useAuthStore((state) => state.hasBackendSession);
   const { connect, disconnect, publicKey, isConnected, isConnecting } = useWallet();
   const { clearSession, clearCredentials } = useAuth0();
   const [avatarUri, setAvatarUri] = useState(user?.avatarUrl ?? null);
@@ -75,9 +77,12 @@ export default function ProfileScreen() {
   const [isSigningOut, setIsSigningOut] = useState(false);
   const [walletError, setWalletError] = useState<string | null>(null);
 
+  // Refetch when a new backend session is seeded so post-login state replaces
+  // the empty placeholder fetched during the sign-in race window.
   useEffect(() => {
+    if (!hasBackendSession) return;
     fetchAirdropStatus().catch(() => undefined);
-  }, [fetchAirdropStatus]);
+  }, [fetchAirdropStatus, hasBackendSession, apiSessionVersion]);
 
   useEffect(() => {
     setAvatarUri(user?.avatarUrl ?? null);
@@ -99,7 +104,7 @@ export default function ProfileScreen() {
     }
 
     const result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      mediaTypes: ["images"],
       allowsEditing: true,
       aspect: [1, 1],
       quality: 0.8

@@ -38,6 +38,16 @@
         }
       ]
     },
+    "ios": {
+      "bundleIdentifier": "com.safescan.qr",
+      "infoPlist": {
+        "NSCameraUsageDescription": "SafeScan needs camera access to scan QR codes.",
+        "NSPhotoLibraryUsageDescription": "SafeScan needs photo access to upload QR images.",
+        "NSPhotoLibraryAddUsageDescription": "SafeScan may save shared scan reports when you choose to export them.",
+        "NSFaceIDUsageDescription": "SafeScan uses Face ID to protect saved credentials when enabled.",
+        "ITSAppUsesNonExemptEncryption": false
+      }
+    },
     "plugins": [
       [
         "expo-router",
@@ -68,8 +78,9 @@
         "root": "./app"
       },
       "eas": {
-        "projectId": "158c14bd-c7e4-4a6d-a163-352e62777cc5"
+        "projectId": "bd703b1e-4182-442c-8d98-40bb95007490"
       }
-    }
+    },
+    "owner": "fellowbeast"
   }
 }

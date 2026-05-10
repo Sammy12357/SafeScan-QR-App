@@ -1,5 +1,6 @@
 import { useEffect, useMemo } from "react";
-import { ActivityIndicator, Linking, Text, useWindowDimensions, View } from "react-native";
+import { ActivityIndicator, Linking, Pressable, Text, useWindowDimensions, View } from "react-native";
+import { Feather } from "@expo/vector-icons";
 import BottomSheet from "@gorhom/bottom-sheet";
 import { CameraView, type BarcodeScanningResult } from "expo-camera";
 import Animated, { interpolateColor, useAnimatedStyle, useSharedValue, withRepeat, withSequence, withTiming } from "react-native-reanimated";
@@ -79,7 +80,7 @@ export default function ScannerScreen() {
   const insets = useSafeAreaInsets();
   const snapPoints = useMemo(() => ["15%"], []);
   const currentScan = useScanStore((state) => state.currentScan);
-  const { hasPermission, isAnalyzing, error, onBarcodeScanned, cameraRef } = useScanner();
+  const { hasPermission, isAnalyzing, isUploading, error, onBarcodeScanned, pickFromLibrary, cameraRef } = useScanner();
   const detected = isAnalyzing;
 
   if (hasPermission === null) {
@@ -115,9 +116,10 @@ export default function ScannerScreen() {
         active={!isAnalyzing}
         barcodeScannerSettings={{ barcodeTypes: ["qr"] }}
         onBarcodeScanned={isAnalyzing ? undefined : (result: BarcodeScanningResult) => onBarcodeScanned(result.data)}
-      >
+      />
+      <View pointerEvents="none" style={{ position: "absolute", top: 0, left: 0, right: 0, bottom: 0 }}>
         <ScannerOverlay detected={detected} />
-      </CameraView>
+      </View>
 
       <View style={{ position: "absolute", top: insets.top + 18, left: 18, right: 18 }}>
         <Text style={{ color: theme.colors.textPrimary, fontSize: 24, fontFamily: theme.fonts.sansSemiBold, textAlign: "center" }}>SafeScan QR</Text>
@@ -127,10 +129,34 @@ export default function ScannerScreen() {
         <View style={{ position: "absolute", left: 0, right: 0, top: 0, bottom: 0, alignItems: "center", justifyContent: "center", backgroundColor: theme.colors.risk.card.overlayBg }}>
           <View style={{ borderWidth: 1, borderColor: theme.colors.border, borderRadius: 8, backgroundColor: theme.colors.surfaceElevated, paddingHorizontal: 22, paddingVertical: 18, alignItems: "center", gap: 12 }}>
             <ActivityIndicator color={theme.colors.accent} />
-            <Text style={{ color: theme.colors.textPrimary, fontFamily: theme.fonts.sansSemiBold }}>Analyzing…</Text>
+            <Text style={{ color: theme.colors.textPrimary, fontFamily: theme.fonts.sansSemiBold }}>{isUploading ? "Decoding upload…" : "Analyzing…"}</Text>
           </View>
         </View>
       ) : null}
+
+      <Pressable
+        accessibilityRole="button"
+        onPress={pickFromLibrary}
+        disabled={isAnalyzing}
+        style={({ pressed }) => ({
+          position: "absolute",
+          right: 18,
+          bottom: Math.max(insets.bottom, 20) + 132,
+          flexDirection: "row",
+          alignItems: "center",
+          gap: 8,
+          paddingHorizontal: 14,
+          paddingVertical: 10,
+          borderRadius: 999,
+          borderWidth: 1,
+          borderColor: theme.colors.border,
+          backgroundColor: theme.colors.surfaceElevated,
+          opacity: isAnalyzing ? 0.5 : pressed ? 0.85 : 1
+        })}
+      >
+        <Feather name="image" size={16} color={theme.colors.textPrimary} />
+        <Text style={{ color: theme.colors.textPrimary, fontFamily: theme.fonts.sansSemiBold, fontSize: 13 }}>Upload QR</Text>
+      </Pressable>
 
       {error ? (
         <View style={{ position: "absolute", left: 18, right: 18, bottom: Math.max(insets.bottom, 20) + 112, borderRadius: 8, borderWidth: 1, borderColor: theme.colors.risk.danger.border, backgroundColor: theme.colors.risk.danger.bg, padding: 12 }}>

@@ -8,6 +8,7 @@ import Animated, { useAnimatedStyle, useSharedValue, withRepeat, withSequence, w
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { theme } from "@/constants/theme";
 import { api, type AnalyzeResult, type ScanHistoryItem } from "@/services/api";
+import { useAuthStore } from "@/stores/authStore";
 import { useScanStore, type ScanRecord } from "@/stores/scanStore";
 import { truncateMiddle } from "@/utils/url";
 
@@ -120,9 +121,16 @@ export default function AnalyzeScreen() {
   const router = useRouter();
   const queryClient = useQueryClient();
   const localHistory = useScanStore((state) => state.history);
+  const apiSessionVersion = useAuthStore((state) => state.apiSessionVersion);
+  const hasBackendSession = useAuthStore((state) => state.hasBackendSession);
+  // Including apiSessionVersion in the queryKey means React Query treats this
+  // as a fresh query whenever a new backend access token is seeded — that's
+  // how we recover from sign-in races where the first fetch fired before the
+  // token landed.
   const historyQuery = useQuery({
-    queryKey: ["scan", "history"],
-    queryFn: () => api.scan.history()
+    queryKey: ["scan", "history", apiSessionVersion],
+    queryFn: () => api.scan.history(),
+    enabled: hasBackendSession
   });
 
   const historyEntries = useMemo(() => {

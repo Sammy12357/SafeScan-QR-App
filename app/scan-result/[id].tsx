@@ -1,15 +1,15 @@
-import { useMemo, useState } from "react";
+import { useMemo, useState, type ReactNode } from "react";
 import { Feather } from "@expo/vector-icons";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import * as Clipboard from "expo-clipboard";
 import * as FileSystem from "expo-file-system/legacy";
+import * as Linking from "expo-linking";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import * as Sharing from "expo-sharing";
 import ConfettiCannon from "react-native-confetti-cannon";
 import { ActivityIndicator, Pressable, ScrollView, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { RiskGauge } from "@/components/RiskGauge";
-import { SignalRow } from "@/components/SignalRow";
+import Svg, { Circle } from "react-native-svg";
 import { Button } from "@/components/ui/Button";
 import { theme } from "@/constants/theme";
 import { api, type AnalyzeResult, type ScanHistoryItem } from "@/services/api";
@@ -18,7 +18,7 @@ import { truncateMiddle } from "@/utils/url";
 
 const verdictLabels: Record<AnalyzeResult["verdict"], string> = {
   safe: "SAFE",
-  warn: "SUSPICIOUS",
+  warn: "CAUTION",
   danger: "DANGEROUS"
 };
 
@@ -28,14 +28,26 @@ const verdictColors: Record<AnalyzeResult["verdict"], string> = {
   danger: theme.colors.danger
 };
 
+const severityLabels = {
+  low: "LOW",
+  medium: "MEDIUM",
+  high: "HIGH"
+} as const;
+
+const scoreRingSize = 86;
+const scoreRingStroke = 10;
+const scoreRingRadius = (scoreRingSize - scoreRingStroke) / 2;
+const scoreRingCircumference = 2 * Math.PI * scoreRingRadius;
+
 function historyItemToAnalyzeResult(item: ScanHistoryItem): AnalyzeResult {
-  const verdict = item.verdict === "safe" || item.verdict === "warn" || item.verdict === "danger"
-    ? item.verdict
-    : item.riskScore >= 80
-      ? "danger"
-      : item.riskScore >= 40
-        ? "warn"
-        : "safe";
+  const verdict =
+    item.verdict === "safe" || item.verdict === "warn" || item.verdict === "danger"
+      ? item.verdict
+      : item.riskScore >= 80
+        ? "danger"
+        : item.riskScore >= 40
+          ? "warn"
+          : "safe";
 
   return {
     scanId: item.scanId,
@@ -68,6 +80,89 @@ function formatReport(result: AnalyzeResult) {
     "Signals:",
     signals || "- No risk signals returned"
   ].join("\n");
+}
+
+function extractFirstUrl(payload: string) {
+  return payload.match(/https?:\/\/[^\s]+/i)?.[0] ?? "";
+}
+
+function normalizeDescriptor(value?: string) {
+  return value?.replace(/[_-]+/g, " ").trim();
+}
+
+function getThreatSummary(result: AnalyzeResult) {
+  return normalizeDescriptor(result.threatType) || result.verdictText || verdictLabels[result.verdict];
+}
+
+function getPayloadLabel(result: AnalyzeResult) {
+  return normalizeDescriptor(result.payloadType) || (extractFirstUrl(result.url) ? "URL" : "Plain text");
+}
+
+function getExecutionCopy(result: AnalyzeResult) {
+  const payloadLabel = getPayloadLabel(result).toLowerCase();
+  const threatSummary = getThreatSummary(result).toLowerCase();
+
+  if (payloadLabel.includes("plain") || threatSummary.includes("embedded url")) {
+    return "Display the decoded text payload without launching a standard browser, wallet, or message flow.";
+  }
+
+  if (payloadLabel.includes("wallet") || threatSummary.includes("wallet")) {
+    return "Open a wallet-related action only after you confirm the destination and requested permissions.";
+  }
+
+  if (extractFirstUrl(result.url)) {
+    return "Open the decoded web destination in a browser after you choose to continue.";
+  }
+
+  return "Display the decoded QR payload so you can inspect it before taking action.";
+}
+
+function severityTone(severity: "low" | "medium" | "high") {
+  if (severity === "high") return theme.colors.risk.danger;
+  if (severity === "medium") return theme.colors.risk.warn;
+  return theme.colors.risk.safe;
+}
+
+function ScoreRing({ score, color }: { score: number; color: string }) {
+  const clamped = Math.max(0, Math.min(100, score));
+  const offset = scoreRingCircumference - (clamped / 100) * scoreRingCircumference;
+
+  return (
+    <View className="items-center justify-center" style={{ width: scoreRingSize, height: scoreRingSize }}>
+      <Svg width={scoreRingSize} height={scoreRingSize} viewBox={`0 0 ${scoreRingSize} ${scoreRingSize}`} style={{ position: "absolute" }}>
+        <Circle
+          cx={scoreRingSize / 2}
+          cy={scoreRingSize / 2}
+          r={scoreRingRadius}
+          stroke={theme.colors.risk.card.gaugeTrack}
+          strokeWidth={scoreRingStroke}
+          fill="none"
+        />
+        <Circle
+          cx={scoreRingSize / 2}
+          cy={scoreRingSize / 2}
+          r={scoreRingRadius}
+          stroke={color}
+          strokeWidth={scoreRingStroke}
+          fill="none"
+          strokeDasharray={scoreRingCircumference}
+          strokeDashoffset={offset}
+          strokeLinecap="butt"
+          transform={`rotate(-90 ${scoreRingSize / 2} ${scoreRingSize / 2})`}
+        />
+      </Svg>
+      <Text className="font-display text-2xl text-textPrimary">{Math.round(clamped)}</Text>
+    </View>
+  );
+}
+
+function Section({ title, children }: { title: string; children: ReactNode }) {
+  return (
+    <View className="rounded-web border border-border bg-surface px-4 py-4">
+      <Text className="font-display text-xs uppercase tracking-widest text-accent">{title}</Text>
+      <View className="mt-4">{children}</View>
+    </View>
+  );
 }
 
 export default function ScanResultScreen() {
@@ -131,9 +226,25 @@ export default function ScanResultScreen() {
     if (!result) return;
     try {
       await Clipboard.setStringAsync(result.url);
-      setActionMessage("URL copied.");
+      setActionMessage("Payload copied.");
     } catch {
-      setActionMessage("Could not copy URL.");
+      setActionMessage("Could not copy payload.");
+    }
+  };
+
+  const continueSafely = async () => {
+    if (!result) return;
+    const destination = extractFirstUrl(result.url) || result.url;
+
+    try {
+      const canOpen = await Linking.canOpenURL(destination);
+      if (!canOpen) {
+        setActionMessage("No launchable URL found in this payload.");
+        return;
+      }
+      await Linking.openURL(destination);
+    } catch {
+      setActionMessage("Could not open destination.");
     }
   };
 
@@ -142,7 +253,7 @@ export default function ScanResultScreen() {
       <View style={{ flex: 1, backgroundColor: theme.colors.background, alignItems: "center", justifyContent: "center", padding: 24 }}>
         {historyQuery.isPending ? <ActivityIndicator color={theme.colors.accent} /> : null}
         <Text style={{ color: historyQuery.error ? theme.colors.danger : theme.colors.textSecondary, marginTop: 12, textAlign: "center" }}>
-          {historyQuery.error instanceof Error ? historyQuery.error.message : "Loading scan result…"}
+          {historyQuery.error instanceof Error ? historyQuery.error.message : "Loading scan result..."}
         </Text>
         <View style={{ marginTop: 18 }}>
           <Button title="Back to Scanner" variant="secondary" onPress={() => router.replace("/(tabs)/scanner")} />
@@ -152,6 +263,10 @@ export default function ScanResultScreen() {
   }
 
   const verdictColor = verdictColors[result.verdict];
+  const threatSummary = getThreatSummary(result);
+  const payloadLabel = getPayloadLabel(result);
+  const topSignal = result.signals[0];
+  const secondarySignals = result.signals.slice(1);
 
   return (
     <View style={{ flex: 1, backgroundColor: theme.colors.background }}>
@@ -162,66 +277,147 @@ export default function ScanResultScreen() {
           paddingHorizontal: 16,
           paddingTop: insets.top + 18,
           paddingBottom: Math.max(insets.bottom, 18) + 28,
-          gap: 20
+          gap: 18
         }}
       >
         <View className="flex-row items-center gap-3">
           <Pressable
             accessibilityRole="button"
+            accessibilityLabel="Back to scanner"
             onPress={() => router.replace("/(tabs)/scanner")}
             className="h-11 w-11 items-center justify-center rounded-web border border-border bg-surface"
           >
             <Feather name="arrow-left" size={20} color={theme.colors.textPrimary} />
           </Pressable>
-          <View className="flex-1">
+          <View className="min-w-0 flex-1">
             <Text className="font-semibold text-xs uppercase tracking-widest text-accent">Scan result</Text>
             <Text className="font-mono text-sm text-textPrimary" numberOfLines={1}>
               {truncateMiddle(result.url, 54)}
             </Text>
             <Text className="mt-1 font-ui text-xs text-textSecondary">{new Date(result.analyzedAt).toLocaleString()}</Text>
           </View>
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Share report"
+            onPress={shareReport}
+            className="h-11 w-11 items-center justify-center rounded-web border border-border bg-surface"
+          >
+            <Feather name="share-2" size={18} color={theme.colors.textPrimary} />
+          </Pressable>
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Copy payload"
+            onPress={copyUrl}
+            className="h-11 w-11 items-center justify-center rounded-web border border-border bg-surface"
+          >
+            <Feather name="copy" size={18} color={theme.colors.textPrimary} />
+          </Pressable>
         </View>
 
-        <View className="items-center rounded-web border border-border bg-surfaceElevated px-4 py-6">
-          <RiskGauge score={result.riskScore} verdict={result.verdict} />
-          <Text style={{ color: verdictColor }} className="mt-2 font-display text-4xl">
-            {verdictLabels[result.verdict]}
-          </Text>
-          <Text className="mt-3 text-center font-ui text-base leading-6 text-textSecondary">
-            {result.verdictText ?? verdictLabels[result.verdict]}
-          </Text>
+        <View className="flex-row items-start gap-4 px-1">
+          <ScoreRing score={result.riskScore} color={verdictColor} />
+          <View className="min-w-0 flex-1 pt-1">
+            <Text className="font-display text-xs uppercase tracking-widest text-accent">Scan verdict</Text>
+            <Text style={{ color: verdictColor }} className="mt-2 font-displayBlack text-4xl uppercase">
+              {verdictLabels[result.verdict]}
+            </Text>
+            <Text className="mt-3 font-ui text-sm leading-5 text-textSecondary">{result.verdictText ?? verdictLabels[result.verdict]}</Text>
+            <Text className="mt-4 font-semibold text-sm leading-5 text-accent">Threat types: {threatSummary}</Text>
+          </View>
+        </View>
+
+        <Section title="What this QR executes">
+          <Text className="font-ui text-sm leading-6 text-textPrimary">{getExecutionCopy(result)}</Text>
+        </Section>
+
+        <Section title="Decoded URL / Payload">
+          <Text className="font-mono text-sm leading-6 text-textPrimary">{result.url}</Text>
+        </Section>
+
+        <Section title="Final risk score">
+          <View className="flex-row items-center justify-between gap-3">
+            <Text className="font-semibold text-xl text-textPrimary">{Math.round(result.riskScore)} / 100</Text>
+            <View className="rounded-pill px-4 py-2" style={{ backgroundColor: `${verdictColor}24` }}>
+              <Text className="font-display text-xs uppercase tracking-widest" style={{ color: verdictColor }}>
+                {verdictLabels[result.verdict]}
+              </Text>
+            </View>
+          </View>
+
+          {topSignal ? (
+            <View className="mt-4 rounded-web border px-3 py-3" style={{ borderColor: theme.colors.border, backgroundColor: theme.colors.risk.card.bg }}>
+              <View className="flex-row items-start justify-between gap-3">
+                <View className="min-w-0 flex-1">
+                  <Text className="font-semibold text-sm text-textPrimary">{topSignal.label}</Text>
+                  <Text className="mt-3 font-ui text-sm leading-5 text-textSecondary">{topSignal.description || topSignal.result}</Text>
+                </View>
+                <View
+                  className="rounded-pill border px-3 py-1"
+                  style={{
+                    borderColor: severityTone(topSignal.severity).border,
+                    backgroundColor: severityTone(topSignal.severity).bg
+                  }}
+                >
+                  <Text className="font-semibold text-xs uppercase" style={{ color: severityTone(topSignal.severity).text }}>
+                    ! {severityLabels[topSignal.severity]}
+                  </Text>
+                </View>
+              </View>
+            </View>
+          ) : (
+            <Text className="mt-4 font-ui text-sm text-textSecondary">No risk signals returned.</Text>
+          )}
+
           {result.mlRisk?.enabled ? (
             <View className="mt-4 rounded-web border border-border bg-surface px-4 py-3">
               <Text className="text-center font-semibold text-xs uppercase tracking-widest text-accent">ML risk distribution</Text>
               <Text className="mt-2 text-center font-mono text-sm text-textPrimary">
-                {result.mlRisk.score ?? result.riskScore}/100 risk · {Math.round((result.mlRisk.maliciousProbability ?? 0) * 100)}% malicious
+                {result.mlRisk.score ?? result.riskScore}/100 risk - {Math.round((result.mlRisk.maliciousProbability ?? 0) * 100)}% malicious
               </Text>
             </View>
           ) : null}
-        </View>
+        </Section>
 
-        <View className="gap-3">
-          <Text className="font-semibold text-xs uppercase tracking-widest text-accent">Signal breakdown</Text>
-          {result.signals.length ? (
-            result.signals.map((signal) => <SignalRow key={`${signal.label}-${signal.severity}-${signal.result}`} label={signal.label} result={signal.result} severity={signal.severity} />)
+        <View className="gap-3 rounded-web border border-border bg-surface px-4 py-4">
+          <Text className="font-display text-xs uppercase tracking-widest text-accent">Signal breakdown</Text>
+          <View className="self-start rounded-pill border border-border bg-surfaceElevated px-3 py-1">
+            <Text className="font-semibold text-xs uppercase tracking-widest text-textSecondary">Type - {payloadLabel}</Text>
+          </View>
+
+          {secondarySignals.length ? (
+            secondarySignals.map((signal) => {
+              const tone = severityTone(signal.severity);
+              return (
+                <View key={`${signal.label}-${signal.severity}-${signal.result}`} className="flex-row items-start gap-3 border-t border-border pt-3">
+                  <View className="mt-1.5 h-2.5 w-2.5 rounded-pill" style={{ backgroundColor: tone.text }} />
+                  <View className="min-w-0 flex-1">
+                    <Text className="font-ui text-sm text-textPrimary">{signal.label}</Text>
+                    <Text className="mt-1 font-ui text-xs leading-5 text-textSecondary">{signal.result}</Text>
+                  </View>
+                  <Text className="font-semibold text-xs uppercase" style={{ color: tone.text }}>
+                    {severityLabels[signal.severity]}
+                  </Text>
+                </View>
+              );
+            })
           ) : (
-            <Text className="rounded-web border border-border bg-surface px-4 py-3 font-ui text-textSecondary">No risk signals returned.</Text>
+            <Text className="border-t border-border pt-3 font-ui text-sm text-textSecondary">
+              {topSignal ? "Primary signal shown above." : "No risk signals returned."}
+            </Text>
           )}
         </View>
 
         {actionMessage ? <Text className="text-center font-ui text-sm text-safe">{actionMessage}</Text> : null}
 
-        <View className="flex-row gap-2">
+        <View className="flex-row gap-3">
           <View className="flex-1">
-            <Button title="Share" variant="secondary" onPress={shareReport} />
+            <Button title="Back" variant="secondary" onPress={() => router.replace("/(tabs)/scanner")} />
           </View>
           <View className="flex-1">
-            <Button title="Report" variant="danger" onPress={reportScan} />
-          </View>
-          <View className="flex-1">
-            <Button title="Copy URL" variant="secondary" onPress={copyUrl} />
+            <Button title="Block & Report" variant="danger" onPress={reportScan} />
           </View>
         </View>
+        <Button title="Continue Safely" variant="primary" onPress={continueSafely} />
       </ScrollView>
     </View>
   );

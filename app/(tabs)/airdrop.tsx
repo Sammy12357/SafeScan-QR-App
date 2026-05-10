@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { Feather } from "@expo/vector-icons";
 import * as Clipboard from "expo-clipboard";
 import * as FileSystem from "expo-file-system/legacy";
@@ -12,6 +12,9 @@ import { tiers } from "@/constants/tiers";
 import { theme } from "@/constants/theme";
 import { useToast } from "@/components/shared/ToastProvider";
 import { useAirdropStore } from "@/stores/airdropStore";
+import { useAuthStore } from "@/stores/authStore";
+import { useWallet } from "@/hooks/useWallet";
+import { truncateMiddle } from "@/utils/url";
 
 function ProgressBar({ progress }: { progress: number }) {
   const width = useSharedValue(0);
@@ -49,11 +52,23 @@ export default function AirdropScreen() {
   const insets = useSafeAreaInsets();
   const { showToast } = useToast();
   const { status, referral, isLoading, error, fetchStatus } = useAirdropStore();
+  const isAuthenticated = useAuthStore((state) => state.isAuthenticated);
+  const userId = useAuthStore((state) => state.user?.id);
+  const apiSessionVersion = useAuthStore((state) => state.apiSessionVersion);
+  const hasBackendSession = useAuthStore((state) => state.hasBackendSession);
+  const { connect, disconnect, publicKey, isConnected, isConnecting } = useWallet();
+  const [walletError, setWalletError] = useState<string | null>(null);
 
+  // Refetch every time a new backend session is seeded so the screen recovers
+  // from sign-in races where the first fetch fired before the access token
+  // landed. apiSessionVersion bumps on hydrate, Auth0 exchange, Google login,
+  // and logout — that covers every transition we care about.
   useEffect(() => {
+    if (!hasBackendSession) return;
     void fetchStatus();
-  }, [fetchStatus]);
+  }, [fetchStatus, hasBackendSession, apiSessionVersion]);
 
+  const isDemo = !isAuthenticated || userId === "demo-user";
   const currentTierNumber = Math.max(1, Math.min(tiers.length, status?.tier ?? 1));
   const currentTier = tiers.find((tier) => tier.tier === currentTierNumber) ?? tiers[0];
   const totalScans = status?.totalScans ?? status?.scanCount ?? 0;
@@ -62,6 +77,8 @@ export default function AirdropScreen() {
   const referralCode = referral?.referralCode || referral?.code || status?.referralCode || "SQR";
   const referralLink = referral?.referralLink || referral?.link || status?.referralLink || `https://safescan-qr.onrender.com/?ref=${referralCode}`;
   const totalReferrals = referral?.totalReferrals ?? referral?.referrals ?? status?.referrals ?? 0;
+  const walletAddress = publicKey || status?.walletAddress || null;
+  const walletConnected = isConnected || Boolean(status?.walletConnected && status.walletAddress);
 
   const copyReferralCode = async () => {
     await Clipboard.setStringAsync(referralCode);
@@ -81,6 +98,17 @@ export default function AirdropScreen() {
     showToast("Referral link ready to share.", "success");
   };
 
+  const handleConnectWallet = async () => {
+    setWalletError(null);
+    try {
+      await connect();
+      showToast("Solana wallet connected.", "success");
+      void fetchStatus();
+    } catch (err) {
+      setWalletError(err instanceof Error ? err.message : "Could not connect Solana wallet.");
+    }
+  };
+
   return (
     <ScrollView
       style={{ flex: 1, backgroundColor: theme.colors.background }}
@@ -94,33 +122,62 @@ export default function AirdropScreen() {
       {isLoading ? <ActivityIndicator color={theme.colors.accent} /> : null}
       {error ? <Text className="rounded-web border border-risk-danger-border bg-risk-danger-bg p-3 text-center font-ui text-risk-danger-text">{error}</Text> : null}
 
-      <View className="rounded-web border border-primaryDim bg-surfaceElevated p-5">
-        <View className="flex-row flex-wrap items-start justify-between gap-4">
-          <View className="min-w-[112px] flex-1">
-            <Text className="font-semibold text-xs uppercase tracking-widest text-accent">Current tier</Text>
-            <Text className="mt-2 font-semibold text-4xl text-textPrimary">{currentTier.tier}</Text>
-            <Text className="font-semibold text-xl text-textPrimary">{currentTier.name}</Text>
-          </View>
-          <View className="max-w-full rounded-web border border-primaryDim bg-primaryDim px-4 py-3">
-            <Text className="font-semibold text-xs uppercase tracking-widest text-accent">Allocation</Text>
-            <Text className="mt-1 font-semibold text-lg text-textPrimary" numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.75}>
-              {currentTier.allocation}
-            </Text>
+      <View className="gap-4 rounded-web border border-primaryDim bg-surfaceElevated p-5">
+        <View className="flex-row items-center justify-between">
+          <Text className="font-semibold text-xs uppercase tracking-widest text-accent">Current tier</Text>
+          <View className="rounded-pill border border-primaryDim bg-primaryDim px-3 py-1">
+            <Text className="font-mono text-xs text-accent">Tier {currentTier.tier} of {tiers.length}</Text>
           </View>
         </View>
 
-        <View className="mt-6 gap-3">
+        <View className="gap-1">
+          <Text className="font-semibold text-3xl text-textPrimary">{currentTier.name}</Text>
+          <Text className="font-mono text-base text-accent">{currentTier.allocation}</Text>
+        </View>
+
+        <View className="gap-2">
           <ProgressBar progress={progress} />
+          <View className="flex-row items-center justify-between">
+            <Text className="font-mono text-xs text-textSecondary">{totalScans} scans</Text>
+            <Text className="font-mono text-xs text-textSecondary">{nextTierAt > 0 ? `${nextTierAt} for next tier` : "Max tier reached"}</Text>
+          </View>
           <Text className="font-ui text-sm text-textSecondary">{currentTier.requirement}</Text>
         </View>
       </View>
 
-      <View className="rounded-web border border-border bg-surface p-5">
+      <View className="gap-3 rounded-web border border-border bg-surface p-5">
+        <Text className="font-semibold text-xs uppercase tracking-widest text-accent">Solana wallet</Text>
+        {walletConnected && walletAddress ? (
+          <View className="gap-3">
+            <View className="rounded-web border border-primaryDim bg-primaryDim px-3 py-3">
+              <Text className="font-mono text-sm text-primary">{truncateMiddle(walletAddress, 20)}</Text>
+            </View>
+            <Button title="Disconnect Wallet" variant="secondary" onPress={disconnect} />
+          </View>
+        ) : (
+          <View className="gap-3">
+            <Text className="font-ui text-sm leading-5 text-textSecondary">
+              {isDemo
+                ? "Sign in with Google to claim a wallet-linked airdrop tier."
+                : "Connect a Solana wallet via Phantom. SafeScan signs a no-fee challenge — no transaction is sent."}
+            </Text>
+            <Button
+              title={isDemo ? "Sign in with Google to Connect" : isConnecting ? "Connecting…" : "Connect Solana Wallet"}
+              onPress={handleConnectWallet}
+              disabled={isConnecting}
+            />
+            {isConnecting ? <ActivityIndicator color={theme.colors.primary} /> : null}
+            {walletError ? <Text className="font-ui text-sm text-danger">{walletError}</Text> : null}
+          </View>
+        )}
+      </View>
+
+      <View className="gap-3 rounded-web border border-border bg-surface p-5">
         <Text className="font-semibold text-xs uppercase tracking-widest text-accent">Referral</Text>
-        <Pressable accessibilityRole="button" onPress={copyReferralCode} className="mt-4 self-start rounded-pill border border-border bg-surfaceElevated px-4 py-3">
+        <Pressable accessibilityRole="button" onPress={copyReferralCode} className="self-start rounded-pill border border-border bg-surfaceElevated px-4 py-3">
           <Text className="font-mono text-base text-textPrimary">{referralCode}</Text>
         </Pressable>
-        <View className="mt-5 flex-row gap-3">
+        <View className="flex-row gap-3">
           <View className="flex-1 rounded-web border border-border p-3">
             <Text className="font-mono text-2xl text-textPrimary">{totalReferrals}</Text>
             <Text className="font-ui text-sm text-textSecondary">Total referrals</Text>
@@ -130,10 +187,7 @@ export default function AirdropScreen() {
             <Text className="font-ui text-sm text-textSecondary">Total scans</Text>
           </View>
         </View>
-        <View className="mt-5 gap-3">
-          <Button title="Share Referral Link" onPress={shareReferralLink} />
-          <Button title="Admin Distribution Pending" variant="secondary" disabled />
-        </View>
+        <Button title="Share Referral Link" onPress={shareReferralLink} />
       </View>
 
       <View className="gap-3">
