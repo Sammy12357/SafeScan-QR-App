@@ -1,50 +1,63 @@
-# Welcome to your Expo app 👋
+# SafeScan QR Android
 
-This is an [Expo](https://expo.dev) project created with [`create-expo-app`](https://www.npmjs.com/package/create-expo-app).
+Native Android app shell for SafeScan QR, built with React Native and Expo.
 
-## Get started
+The backend remains unchanged:
 
-1. Install dependencies
+- Production API: `https://safescan-qr.onrender.com`
+- Android package: `com.safescan.qr`
+- Deep link scheme: `safescan://`
 
-   ```bash
-   npm install
-   ```
+## Stack
 
-2. Start the app
+- Expo SDK 51+
+- Expo Router
+- NativeWind
+- TypeScript strict mode
+- React Query
+- Zustand
+- Expo Camera `CameraView`
+- Expo SecureStore
+- Expo Auth Session
+- React Native Reanimated
 
-   ```bash
-   npx expo start
-   ```
-
-In the output, you'll find options to open the app in a
-
-- [development build](https://docs.expo.dev/develop/development-builds/introduction/)
-- [Android emulator](https://docs.expo.dev/workflow/android-studio-emulator/)
-- [iOS simulator](https://docs.expo.dev/workflow/ios-simulator/)
-- [Expo Go](https://expo.dev/go), a limited sandbox for trying out app development with Expo
-
-You can start developing by editing the files inside the **app** directory. This project uses [file-based routing](https://docs.expo.dev/router/introduction).
-
-## Get a fresh project
-
-When you're ready, run:
+## First Run
 
 ```bash
-npm run reset-project
+npm install
+npx expo install
+npx expo start
 ```
 
-This command will move the starter code to the **app-example** directory and create a blank **app** directory where you can start developing.
+For native modules such as camera, secure storage, wallet adapter, and notifications, use a development build rather than relying only on Expo Go.
 
-## Learn more
+```bash
+npx eas build:configure
+npx eas build --platform android --profile preview
+```
 
-To learn more about developing your project with Expo, look at the following resources:
+## Repo Goal
 
-- [Expo documentation](https://docs.expo.dev/): Learn fundamentals, or go into advanced topics with our [guides](https://docs.expo.dev/guides).
-- [Learn Expo tutorial](https://docs.expo.dev/tutorial/introduction/): Follow a step-by-step tutorial where you'll create a project that runs on Android, iOS, and the web.
+This repo converts the SafeScan QR web app into a production-ready native Android app while keeping the web backend untouched.
 
-## Join the community
+Core flows:
 
-Join our community of developers creating universal apps.
+- Scan QR codes with the camera.
+- Analyze payloads through `/api/analyze`.
+- Show a full-screen risk verdict and signal breakdown.
+- Track scan history.
+- Connect Google OAuth.
+- Connect a Solana mobile wallet.
+- Show airdrop tier progress.
+- Share scan reports and referral links.
 
-- [Expo on GitHub](https://github.com/expo/expo): View our open source platform and contribute.
-- [Discord community](https://chat.expo.dev): Chat with Expo users and ask questions.
+## Development Phases
+
+1. Foundation: Expo scaffold, design system, stores, API layer.
+2. Auth and navigation shell.
+3. Core scanner and risk result flow.
+4. Analyzer, airdrop, profile, legal screens.
+5. Offline, cold-start, accessibility, and QA polish.
+6. EAS preview build, internal testing, production AAB.
+
+See [docs/BUILD_PLAN.md](docs/BUILD_PLAN.md) for the full implementation blueprint.
