@@ -5,6 +5,7 @@ import * as ImagePicker from "expo-image-picker";
 import { useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useAuth0 } from "react-native-auth0";
+import Svg, { Defs, LinearGradient as SvgLinearGradient, Polygon, Stop } from "react-native-svg";
 import { Button } from "@/components/ui/Button";
 import { tiers } from "@/constants/tiers";
 import { theme } from "@/constants/theme";
@@ -40,12 +41,12 @@ function StatCard({ value, label }: { value: string | number; label: string }) {
         style={{
           color: theme.colors.textPrimary,
           fontSize: isLongText ? 18 : 20,
-          fontFamily: isLongText ? theme.fonts.sansSemiBold : theme.fonts.display
+          fontFamily: theme.fonts.display
         }}
       >
         {value}
       </Text>
-      <Text style={{ color: theme.colors.textSecondary, marginTop: 4, fontFamily: theme.fonts.sans }}>{label}</Text>
+      <Text style={{ color: theme.colors.textSecondary, marginTop: 4, fontFamily: theme.fonts.display, fontSize: 11, letterSpacing: 0.8, textTransform: "uppercase" }}>{label}</Text>
     </View>
   );
 }
@@ -53,8 +54,63 @@ function StatCard({ value, label }: { value: string | number; label: string }) {
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
   return (
     <View style={{ borderWidth: 1, borderColor: theme.colors.border, borderRadius: 8, backgroundColor: theme.colors.surface, padding: 16, gap: 12 }}>
-      <Text style={{ color: theme.colors.textPrimary, fontSize: 18, fontFamily: theme.fonts.sansSemiBold }}>{title}</Text>
+      <Text style={{ color: theme.colors.textPrimary, fontSize: 18, fontFamily: theme.fonts.display }}>{title}</Text>
       {children}
+    </View>
+  );
+}
+
+function SolanaMark() {
+  return (
+    <Svg width={42} height={30} viewBox="0 0 128 88">
+      <Defs>
+        <SvgLinearGradient id="solanaTop" x1="0" y1="0" x2="1" y2="0">
+          <Stop offset="0" stopColor="#9945ff" />
+          <Stop offset="1" stopColor="#14f195" />
+        </SvgLinearGradient>
+        <SvgLinearGradient id="solanaMiddle" x1="0" y1="0" x2="1" y2="0">
+          <Stop offset="0" stopColor="#9945ff" />
+          <Stop offset="1" stopColor="#14f195" />
+        </SvgLinearGradient>
+        <SvgLinearGradient id="solanaBottom" x1="0" y1="0" x2="1" y2="0">
+          <Stop offset="0" stopColor="#9945ff" />
+          <Stop offset="1" stopColor="#14f195" />
+        </SvgLinearGradient>
+      </Defs>
+      <Polygon points="36,0 128,0 92,24 0,24" fill="url(#solanaTop)" />
+      <Polygon points="0,32 92,32 128,56 36,56" fill="url(#solanaMiddle)" />
+      <Polygon points="36,64 128,64 92,88 0,88" fill="url(#solanaBottom)" />
+    </Svg>
+  );
+}
+
+function BrandHeader() {
+  return (
+    <View style={{ gap: 10, paddingTop: 4, paddingHorizontal: 2 }}>
+      <View style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
+        <Text
+          numberOfLines={1}
+          adjustsFontSizeToFit
+          minimumFontScale={0.75}
+          style={{ color: theme.colors.accent, fontFamily: theme.fonts.display, fontSize: 11, letterSpacing: 1.5, textTransform: "uppercase", flexShrink: 1 }}
+        >
+          Premium Security Build
+        </Text>
+        <View style={{ flexDirection: "row", alignItems: "center", gap: 7, flexShrink: 0 }}>
+          <Text style={{ color: theme.colors.textSecondary, fontFamily: theme.fonts.display, fontSize: 10.5, letterSpacing: 0.8 }}>
+            Powered By
+          </Text>
+          <SolanaMark />
+        </View>
+      </View>
+      <Text
+        adjustsFontSizeToFit
+        minimumFontScale={0.62}
+        numberOfLines={1}
+        style={{ color: theme.colors.textPrimary, fontFamily: theme.fonts.displayBlack, fontSize: 52, lineHeight: 58, letterSpacing: 0 }}
+      >
+        SafeScan QR
+      </Text>
     </View>
   );
 }
@@ -94,7 +150,7 @@ export default function ProfileScreen() {
   const totalScans = airdropStatus?.totalScans ?? airdropStatus?.scanCount ?? history.length;
   const tierNumber = airdropStatus?.tier ?? tiers.find((tier) => tier.name === airdropStatus?.currentTier)?.tier ?? 1;
   const tierLabel = airdropStatus?.currentTier ?? tiers.find((tier) => tier.tier === tierNumber)?.name ?? "Pending";
-  const referralCount = referral?.totalReferrals ?? referral?.referrals ?? airdropStatus?.referrals ?? 0;
+  const hasReferralActivity = (referral?.totalReferrals ?? referral?.referrals ?? airdropStatus?.referrals ?? 0) > 0;
 
   const pickAvatar = async () => {
     const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
@@ -176,6 +232,8 @@ export default function ProfileScreen() {
       style={{ flex: 1, backgroundColor: theme.colors.background }}
       contentContainerStyle={{ paddingHorizontal: 16, paddingTop: insets.top + 24, gap: 16, paddingBottom: Math.max(insets.bottom, 20) + 36 }}
     >
+      <BrandHeader />
+
       <View style={{ borderColor: theme.colors.border, borderWidth: 1, borderRadius: 8, backgroundColor: theme.colors.surfaceElevated, padding: 16, gap: 14, ...theme.shadows.cardSubtle }}>
         <View style={{ flexDirection: "row", alignItems: "center", gap: 14 }}>
           <Pressable accessibilityRole="button" onPress={pickAvatar} style={{ width: 72, height: 72, borderRadius: 36, overflow: "hidden", backgroundColor: theme.colors.primaryDim, alignItems: "center", justifyContent: "center", borderWidth: 1, borderColor: theme.colors.primaryGlow }}>
@@ -186,7 +244,7 @@ export default function ProfileScreen() {
             )}
           </Pressable>
           <View style={{ flex: 1 }}>
-            <Text numberOfLines={1} style={{ color: theme.colors.textPrimary, fontSize: 24, fontFamily: theme.fonts.sansSemiBold }}>
+            <Text numberOfLines={1} style={{ color: theme.colors.textPrimary, fontSize: 24, fontFamily: theme.fonts.display }}>
               {displayName}
             </Text>
             <Text numberOfLines={1} style={{ color: theme.colors.textSecondary, marginTop: 4, fontFamily: theme.fonts.sans }}>
@@ -198,7 +256,7 @@ export default function ProfileScreen() {
         <View style={{ flexDirection: "row", gap: 10 }}>
           <StatCard value={totalScans} label="Total scans" />
           <StatCard value={tierLabel} label="Airdrop tier" />
-          <StatCard value={referralCount} label="Referrals" />
+          <StatCard value={hasReferralActivity ? "Tracked" : "Hidden"} label="Referrals" />
         </View>
       </View>
 
@@ -228,7 +286,10 @@ export default function ProfileScreen() {
         </Pressable>
       </Section>
 
-      <Section title="Danger Zone">
+      <Section title="Delete Account">
+        <Text style={{ color: theme.colors.textSecondary, fontFamily: theme.fonts.sans, lineHeight: 22 }}>
+          This area is only for permanent account deletion. Signing out stays separate below so it cannot be confused with deleting your SafeScan data.
+        </Text>
         <Button title={isDeleting ? "Deleting..." : "Delete Account"} variant="danger" disabled={isDeleting} onPress={confirmDeleteAccount} />
       </Section>
 

@@ -24,9 +24,9 @@ function verdictToLegacyRisk(verdict: z.infer<typeof RiskVerdictSchema>) {
 }
 
 function tierNameToNumber(tier?: string) {
-  if (tier === "Guardian") return 4 as const;
-  if (tier === "Referrer") return 3 as const;
-  if (tier === "Scanner") return 2 as const;
+  if (tier === "Guardian") return 3 as const;
+  if (tier === "Referrer") return 2 as const;
+  if (tier === "Scanner") return 1 as const;
   return 1 as const;
 }
 

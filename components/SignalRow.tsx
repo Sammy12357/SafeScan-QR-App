@@ -30,7 +30,7 @@ export function SignalRow({ label, result, severity }: { label: string; result?:
     <View className="flex-row items-center gap-3 rounded-web border border-border bg-surface px-4 py-3">
       <View className={`h-2.5 w-2.5 rounded-pill ${styles.dot}`} />
       <View className="flex-1">
-        <Text className="font-ui text-base text-textPrimary" numberOfLines={2}>
+        <Text className="font-display text-sm text-textPrimary" numberOfLines={2}>
           {label}
         </Text>
         {result ? (
@@ -40,7 +40,7 @@ export function SignalRow({ label, result, severity }: { label: string; result?:
         ) : null}
       </View>
       <View className={`rounded-pill border px-3 py-1 ${styles.badge}`}>
-        <Text className={`font-semibold text-xs ${styles.text}`}>{styles.label}</Text>
+        <Text className={`font-display text-xs uppercase tracking-widest ${styles.text}`}>{styles.label}</Text>
       </View>
     </View>
   );

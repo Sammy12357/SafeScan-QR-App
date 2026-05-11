@@ -36,6 +36,24 @@ function extractBase58Signature(signedPayloadB64: string): string {
   return bs58.encode(signature);
 }
 
+function isNetworkRequestError(error: unknown) {
+  if (!(error instanceof Error)) return false;
+  const message = error.message.toLowerCase();
+  return message.includes("network request failed") || message.includes("failed to fetch") || message.includes("networkerror") || message.includes("aborted");
+}
+
+function normalizeWalletError(error: unknown) {
+  if (isNetworkRequestError(error)) {
+    return new Error("Phantom opened, but SafeScan could not reach backend wallet verification. Check the emulator internet connection and try again.");
+  }
+  return error;
+}
+
+function getSignedPayload(signResponse: unknown) {
+  const response = signResponse as { signed_payloads?: string[]; signedPayloads?: string[] };
+  return response.signed_payloads?.[0] ?? response.signedPayloads?.[0];
+}
+
 export function useWallet() {
   const publicKey = useAuthStore((state) => state.walletAddress);
   const setWalletAddress = useAuthStore((state) => state.setWalletAddress);
@@ -52,6 +70,7 @@ export function useWallet() {
     }
 
     setIsConnecting(true);
+    let authorizedWalletAddress: string | null = null;
     try {
       await transact(async (wallet) => {
         const authorization = await wallet.authorize({
@@ -62,6 +81,7 @@ export function useWallet() {
         if (!account) throw new Error("No Solana wallet account was selected.");
 
         const walletAddress = new PublicKey(toUint8Array(account.address)).toBase58();
+        authorizedWalletAddress = walletAddress;
 
         // 1. Ask the backend for a one-time challenge to sign.
         const challenge = await api.wallet.nonce(walletAddress);
@@ -71,7 +91,7 @@ export function useWallet() {
           addresses: [account.address],
           payloads: [fromUint8Array(utf8ToBytes(challenge.message))]
         });
-        const signedPayload = signResponse.signed_payloads?.[0];
+        const signedPayload = getSignedPayload(signResponse);
         if (!signedPayload) throw new Error("Wallet did not return a signature.");
 
         const signatureBase58 = extractBase58Signature(signedPayload);
@@ -81,6 +101,12 @@ export function useWallet() {
 
         setWalletAddress(walletAddress);
       });
+    } catch (error) {
+      if (authorizedWalletAddress && isNetworkRequestError(error)) {
+        setWalletAddress(authorizedWalletAddress);
+        return;
+      }
+      throw normalizeWalletError(error);
     } finally {
       setIsConnecting(false);
     }

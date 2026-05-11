@@ -50,7 +50,7 @@ export function RiskGauge({ score, verdict }: { score: number; verdict: Verdict 
         <View className="absolute bottom-6 h-4 w-4 rounded-pill" style={{ backgroundColor: color }} />
         <View className="absolute bottom-8 items-center">
           <Text className="font-mono text-5xl text-textPrimary">{Math.round(clampedScore)}</Text>
-          <Text className="font-semibold text-xs uppercase tracking-widest text-textSecondary">risk score</Text>
+          <Text className="font-display text-xs uppercase tracking-widest text-textSecondary">risk score</Text>
         </View>
       </View>
     </View>

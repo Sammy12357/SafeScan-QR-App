@@ -110,8 +110,8 @@ function VerdictBadge({ verdict }: { verdict: string }) {
   const styles = verdictStyles[verdict] ?? verdictStyles.warn;
 
   return (
-    <View className={`rounded-pill border px-3 py-1 ${styles.badge}`}>
-      <Text className={`font-semibold text-xs ${styles.text}`}>{styles.label}</Text>
+    <View className={`rounded-web border px-3 py-2 ${styles.badge}`}>
+      <Text className={`font-display text-xs uppercase tracking-widest ${styles.text}`}>{styles.label}</Text>
     </View>
   );
 }
@@ -163,15 +163,26 @@ export default function AnalyzeScreen() {
       <Pressable
         accessibilityRole="button"
         onPress={() => openResult(item)}
-        className="mb-3 rounded-web border border-border bg-surface p-4"
+        className="mb-3 rounded-web border border-border bg-surface px-4 py-4"
       >
-        <Text className="font-mono text-sm text-textPrimary" numberOfLines={1}>
-          {truncateMiddle(result.url, 54)}
-        </Text>
-        <View className="mt-4 flex-row items-center justify-between gap-3">
-          <VerdictBadge verdict={result.verdict} />
-          <Text className="font-semibold text-base text-textPrimary">{result.riskScore}/100</Text>
-          <Text className="flex-1 text-right font-ui text-sm text-textSecondary" numberOfLines={1}>
+        <View className="flex-row items-center justify-between gap-4">
+          <View className="min-w-0 flex-1">
+            <Text className="font-display text-xs uppercase tracking-widest text-accent">Payload</Text>
+            <Text className="mt-2 font-mono text-sm leading-5 text-textPrimary" numberOfLines={2}>
+              {truncateMiddle(result.url, 64)}
+            </Text>
+          </View>
+          <View className="items-center justify-center self-stretch">
+            <VerdictBadge verdict={result.verdict} />
+          </View>
+        </View>
+
+        <View className="mt-4 flex-row items-center justify-between border-t border-border pt-3">
+          <View>
+            <Text className="font-display text-xs uppercase tracking-widest text-textSecondary">Risk score</Text>
+            <Text className="mt-1 font-display text-xl text-textPrimary">{result.riskScore}/100</Text>
+          </View>
+          <Text className="max-w-[48%] text-right font-ui text-sm text-textSecondary" numberOfLines={1}>
             {relativeTime}
           </Text>
         </View>
@@ -182,8 +193,8 @@ export default function AnalyzeScreen() {
   return (
     <View style={{ flex: 1, backgroundColor: theme.colors.background, paddingTop: insets.top + 28 }}>
       <View className="px-4 pb-5">
-        <Text className="font-semibold text-xs uppercase tracking-widest text-accent">SafeScan QR</Text>
-        <Text className="mt-2 font-semibold text-3xl text-textPrimary">Scan History</Text>
+        <Text className="font-display text-xs uppercase tracking-widest text-accent">SafeScan QR</Text>
+        <Text className="mt-2 font-display text-3xl text-textPrimary">Scan History</Text>
       </View>
 
       {historyQuery.isPending && historyEntries.length === 0 ? (
@@ -201,7 +212,7 @@ export default function AnalyzeScreen() {
           refreshControl={<RefreshControl refreshing={historyQuery.isFetching && !historyQuery.isPending} onRefresh={() => historyQuery.refetch()} tintColor={theme.colors.accent} />}
           ListEmptyComponent={
             <View style={{ minHeight: 420 }} className="items-center justify-center px-6">
-              <Text className="text-center font-semibold text-xl text-textPrimary">No scans yet.</Text>
+              <Text className="text-center font-display text-xl text-textPrimary">No scans yet.</Text>
               <Text className="mt-2 text-center font-ui text-base text-textSecondary">Scan your first QR code.</Text>
             </View>
           }

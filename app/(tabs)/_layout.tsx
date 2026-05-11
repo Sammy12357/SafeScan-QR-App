@@ -6,7 +6,7 @@ import Animated, { useAnimatedStyle, useSharedValue, withTiming } from "react-na
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { theme } from "@/constants/theme";
 
-type TabIconName = "camera" | "search" | "gift" | "user";
+type TabIconName = "camera" | "clock" | "gift" | "bar-chart-2" | "user";
 
 function TabIcon({ name, color, focused }: { name: TabIconName; color: string; focused: boolean }) {
   const progress = useSharedValue(focused ? 1 : 0);
@@ -25,7 +25,7 @@ function TabIcon({ name, color, focused }: { name: TabIconName; color: string; f
   }));
 
   return (
-    <View style={{ width: 42, alignItems: "center" }}>
+    <View style={{ width: 42, alignItems: "center", justifyContent: "center" }}>
       <Animated.View style={iconStyle}>
         <Feather name={name} color={color} size={20} />
       </Animated.View>
@@ -36,7 +36,8 @@ function TabIcon({ name, color, focused }: { name: TabIconName; color: string; f
             height: 2,
             borderRadius: 999,
             backgroundColor: theme.colors.tab.active,
-            marginTop: 5
+            marginTop: 4,
+            marginBottom: 5
           },
           indicatorStyle
         ]}
@@ -68,17 +69,19 @@ export default function TabsLayout() {
         tabBarActiveTintColor: theme.colors.tab.active,
         tabBarInactiveTintColor: theme.colors.tab.inactive,
         tabBarLabelStyle: {
-          fontFamily: theme.fonts.sansMedium,
-          fontSize: 11,
-          marginTop: 0,
-          paddingBottom: 2
+          fontFamily: theme.fonts.display,
+          fontSize: 10,
+          marginTop: 3,
+          paddingBottom: 2,
+          textTransform: "uppercase"
         },
         tabBarIconStyle: { marginBottom: -2 }
       }}
     >
-      <Tabs.Screen name="scanner" options={{ title: "Scanner", tabBarIcon: ({ color, focused }) => <TabIcon name="camera" color={color} focused={focused} /> }} />
-      <Tabs.Screen name="analyze" options={{ title: "Analyze", tabBarIcon: ({ color, focused }) => <TabIcon name="search" color={color} focused={focused} /> }} />
+      <Tabs.Screen name="analyze" options={{ title: "History", tabBarIcon: ({ color, focused }) => <TabIcon name="clock" color={color} focused={focused} /> }} />
       <Tabs.Screen name="airdrop" options={{ title: "Airdrop", tabBarIcon: ({ color, focused }) => <TabIcon name="gift" color={color} focused={focused} /> }} />
+      <Tabs.Screen name="scanner" options={{ title: "Scanner", tabBarIcon: ({ color, focused }) => <TabIcon name="camera" color={color} focused={focused} /> }} />
+      <Tabs.Screen name="leaderboard" options={{ title: "Leaders", tabBarIcon: ({ color, focused }) => <TabIcon name="bar-chart-2" color={color} focused={focused} /> }} />
       <Tabs.Screen name="profile" options={{ title: "Profile", tabBarIcon: ({ color, focused }) => <TabIcon name="user" color={color} focused={focused} /> }} />
     </Tabs>
   );

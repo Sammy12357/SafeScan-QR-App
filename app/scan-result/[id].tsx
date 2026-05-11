@@ -290,7 +290,7 @@ export default function ScanResultScreen() {
             <Feather name="arrow-left" size={20} color={theme.colors.textPrimary} />
           </Pressable>
           <View className="min-w-0 flex-1">
-            <Text className="font-semibold text-xs uppercase tracking-widest text-accent">Scan result</Text>
+            <Text className="font-display text-xs uppercase tracking-widest text-accent">Scan result</Text>
             <Text className="font-mono text-sm text-textPrimary" numberOfLines={1}>
               {truncateMiddle(result.url, 54)}
             </Text>
@@ -322,7 +322,7 @@ export default function ScanResultScreen() {
               {verdictLabels[result.verdict]}
             </Text>
             <Text className="mt-3 font-ui text-sm leading-5 text-textSecondary">{result.verdictText ?? verdictLabels[result.verdict]}</Text>
-            <Text className="mt-4 font-semibold text-sm leading-5 text-accent">Threat types: {threatSummary}</Text>
+            <Text className="mt-4 font-display text-sm leading-5 text-accent">Threat types: {threatSummary}</Text>
           </View>
         </View>
 
@@ -336,7 +336,7 @@ export default function ScanResultScreen() {
 
         <Section title="Final risk score">
           <View className="flex-row items-center justify-between gap-3">
-            <Text className="font-semibold text-xl text-textPrimary">{Math.round(result.riskScore)} / 100</Text>
+            <Text className="font-display text-xl text-textPrimary">{Math.round(result.riskScore)} / 100</Text>
             <View className="rounded-pill px-4 py-2" style={{ backgroundColor: `${verdictColor}24` }}>
               <Text className="font-display text-xs uppercase tracking-widest" style={{ color: verdictColor }}>
                 {verdictLabels[result.verdict]}
@@ -348,7 +348,7 @@ export default function ScanResultScreen() {
             <View className="mt-4 rounded-web border px-3 py-3" style={{ borderColor: theme.colors.border, backgroundColor: theme.colors.risk.card.bg }}>
               <View className="flex-row items-start justify-between gap-3">
                 <View className="min-w-0 flex-1">
-                  <Text className="font-semibold text-sm text-textPrimary">{topSignal.label}</Text>
+                  <Text className="font-display text-sm text-textPrimary">{topSignal.label}</Text>
                   <Text className="mt-3 font-ui text-sm leading-5 text-textSecondary">{topSignal.description || topSignal.result}</Text>
                 </View>
                 <View
@@ -358,7 +358,7 @@ export default function ScanResultScreen() {
                     backgroundColor: severityTone(topSignal.severity).bg
                   }}
                 >
-                  <Text className="font-semibold text-xs uppercase" style={{ color: severityTone(topSignal.severity).text }}>
+                  <Text className="font-display text-xs uppercase" style={{ color: severityTone(topSignal.severity).text }}>
                     ! {severityLabels[topSignal.severity]}
                   </Text>
                 </View>
@@ -370,7 +370,7 @@ export default function ScanResultScreen() {
 
           {result.mlRisk?.enabled ? (
             <View className="mt-4 rounded-web border border-border bg-surface px-4 py-3">
-              <Text className="text-center font-semibold text-xs uppercase tracking-widest text-accent">ML risk distribution</Text>
+              <Text className="text-center font-display text-xs uppercase tracking-widest text-accent">ML risk distribution</Text>
               <Text className="mt-2 text-center font-mono text-sm text-textPrimary">
                 {result.mlRisk.score ?? result.riskScore}/100 risk - {Math.round((result.mlRisk.maliciousProbability ?? 0) * 100)}% malicious
               </Text>
@@ -381,7 +381,7 @@ export default function ScanResultScreen() {
         <View className="gap-3 rounded-web border border-border bg-surface px-4 py-4">
           <Text className="font-display text-xs uppercase tracking-widest text-accent">Signal breakdown</Text>
           <View className="self-start rounded-pill border border-border bg-surfaceElevated px-3 py-1">
-            <Text className="font-semibold text-xs uppercase tracking-widest text-textSecondary">Type - {payloadLabel}</Text>
+            <Text className="font-display text-xs uppercase tracking-widest text-textSecondary">Type - {payloadLabel}</Text>
           </View>
 
           {secondarySignals.length ? (
@@ -394,7 +394,7 @@ export default function ScanResultScreen() {
                     <Text className="font-ui text-sm text-textPrimary">{signal.label}</Text>
                     <Text className="mt-1 font-ui text-xs leading-5 text-textSecondary">{signal.result}</Text>
                   </View>
-                  <Text className="font-semibold text-xs uppercase" style={{ color: tone.text }}>
+                  <Text className="font-display text-xs uppercase" style={{ color: tone.text }}>
                     {severityLabels[signal.severity]}
                   </Text>
                 </View>

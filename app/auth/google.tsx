@@ -39,10 +39,10 @@ export default function GoogleAuthScreen() {
       <View style={{ alignItems: "center", gap: 14 }}>
         <Image source={require("../../assets/images/icon.png")} style={{ width: 88, height: 88, borderRadius: 22 }} />
         <View style={{ alignItems: "center", gap: 6 }}>
-          <Text style={{ color: theme.colors.accent, fontSize: 12, fontFamily: theme.fonts.sansSemiBold, letterSpacing: 1.8 }}>
+          <Text style={{ color: theme.colors.accent, fontSize: 12, fontFamily: theme.fonts.display, letterSpacing: 1.8 }}>
             SAFESCAN QR
           </Text>
-          <Text style={{ color: theme.colors.textPrimary, fontSize: 30, fontFamily: theme.fonts.sansSemiBold, textAlign: "center" }}>
+          <Text style={{ color: theme.colors.textPrimary, fontSize: 30, fontFamily: theme.fonts.display, textAlign: "center" }}>
             Continue to SafeScan
           </Text>
         </View>
@@ -62,7 +62,7 @@ export default function GoogleAuthScreen() {
             opacity: pressed ? 0.8 : 1,
           })}
         >
-          <Text style={{ color: "#000", fontFamily: theme.fonts.sansSemiBold, fontSize: 16 }}>
+          <Text style={{ color: "#000", fontFamily: theme.fonts.display, fontSize: 15 }}>
             Enter App (Demo)
           </Text>
         </Pressable>
@@ -87,7 +87,7 @@ export default function GoogleAuthScreen() {
           })}
         >
           <AntDesign name="google" size={20} color={theme.colors.backgroundEnd} />
-          <Text style={{ color: theme.colors.backgroundEnd, fontFamily: theme.fonts.sansSemiBold, fontSize: 15 }}>
+          <Text style={{ color: theme.colors.backgroundEnd, fontFamily: theme.fonts.display, fontSize: 14 }}>
             Sign in with Google
           </Text>
         </Pressable>

@@ -15,7 +15,7 @@ export function GoogleSignInButton({ onPress, disabled = false }: { onPress?: ()
         </View>
         <Text style={{ color: theme.colors.textPrimary, fontFamily: theme.fonts.sansMedium }}>Sign in with Google</Text>
       </Pressable>
-      <Text style={{ color: theme.colors.textSecondary, fontSize: 12 }}>Opens Google's secure sign-in prompt.</Text>
+      <Text style={{ color: theme.colors.textSecondary, fontSize: 12 }}>Opens Google secure sign-in.</Text>
     </View>
   );
 }
