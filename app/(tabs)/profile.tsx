@@ -30,7 +30,7 @@ function StatCard({ value, label }: { value: string | number; label: string }) {
   const isLongText = typeof value === "string" && value.length > 5;
 
   return (
-    <View style={{ flex: 1, minHeight: 106, borderWidth: 1, borderColor: theme.colors.border, borderRadius: 8, padding: 12, backgroundColor: theme.colors.surface, justifyContent: "space-between" }}>
+    <View style={{ flex: 1, minHeight: 106, borderWidth: 1, borderColor: theme.colors.border, borderRadius: 8, padding: 12, backgroundColor: theme.colors.surface, alignItems: "center", justifyContent: "center", gap: 18 }}>
       <Text
         numberOfLines={1}
         adjustsFontSizeToFit
@@ -40,7 +40,9 @@ function StatCard({ value, label }: { value: string | number; label: string }) {
           fontSize: isLongText ? 17 : 20,
           lineHeight: 24,
           fontFamily: theme.fonts.display,
-          includeFontPadding: false
+          includeFontPadding: false,
+          maxWidth: "100%",
+          textAlign: "center"
         }}
       >
         {value}
@@ -56,7 +58,9 @@ function StatCard({ value, label }: { value: string | number; label: string }) {
           lineHeight: 16,
           letterSpacing: 0.8,
           textTransform: "uppercase",
-          includeFontPadding: false
+          includeFontPadding: false,
+          maxWidth: "100%",
+          textAlign: "center"
         }}
       >
         {label}
@@ -163,7 +167,7 @@ export default function ProfileScreen() {
   const totalScans = airdropStatus?.totalScans ?? airdropStatus?.scanCount ?? history.length;
   const tierNumber = airdropStatus?.tier ?? tiers.find((tier) => tier.name === airdropStatus?.currentTier)?.tier ?? 1;
   const tierLabel = airdropStatus?.currentTier ?? tiers.find((tier) => tier.tier === tierNumber)?.name ?? "Pending";
-  const hasReferralActivity = (referral?.totalReferrals ?? referral?.referrals ?? airdropStatus?.referrals ?? 0) > 0;
+  const referralCount = referral?.totalReferrals ?? referral?.referrals ?? airdropStatus?.referrals ?? 0;
 
   const pickAvatar = async () => {
     const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
@@ -269,7 +273,7 @@ export default function ProfileScreen() {
         <View style={{ flexDirection: "row", gap: 10 }}>
           <StatCard value={totalScans} label="Total scans" />
           <StatCard value={tierLabel} label="Airdrop tier" />
-          <StatCard value={hasReferralActivity ? "Tracked" : "Hidden"} label="Referrals" />
+          <StatCard value={referralCount} label="Referrals" />
         </View>
       </View>
 

@@ -172,8 +172,10 @@ function ScoreBar({ label, score, color, detail }: { label: string; score: numbe
         </Text>
         <Text className="font-mono text-xs text-textPrimary">{clamped}/100</Text>
       </View>
-      <View className="h-2 overflow-hidden rounded-pill bg-surfaceElevated" style={{ marginLeft: 52, marginRight: 18 }}>
-        <View style={{ width: `${clamped}%`, backgroundColor: color }} className="h-full rounded-pill" />
+      <View style={{ paddingLeft: 72, paddingRight: 24 }}>
+        <View style={{ height: 8, overflow: "hidden", borderRadius: 999, backgroundColor: theme.colors.surfaceElevated }}>
+          <View style={{ width: `${clamped}%`, height: "100%", borderRadius: 999, backgroundColor: color }} />
+        </View>
       </View>
       <Text className="mt-1 self-center px-3 text-center font-ui text-xs text-textSecondary" style={{ lineHeight: 22, maxWidth: "96%" }}>
         {detail}
