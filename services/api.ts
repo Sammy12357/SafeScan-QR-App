@@ -31,6 +31,7 @@ import {
   type WalletStatusResponse
 } from "@/utils/schemas";
 import { enhanceAnalyzeResult } from "@/utils/localRisk";
+import { isUrlLike, normalizeUrl } from "@/utils/url";
 
 const AUTH_TOKEN_KEY = "auth_token";
 const REFRESH_TOKEN_KEY = "refresh_token";
@@ -44,7 +45,7 @@ const endpoints = {
   authRefresh: "/auth/refresh",
   authLogout: "/auth/logout",
   health: "/api/health",
-  wakeAnalyze: "/api/analyze",
+  publicAnalyze: "/api/analyze",
   scanAnalyze: "/api/scan",
   scanFile: "/api/scan/file",
   scanHistory: "/api/scan/history",
@@ -107,6 +108,18 @@ type RequestOptions = RequestInit & {
 
 function apiUrl(path: string) {
   return `${API_BASE_URL}${path}`;
+}
+
+function directGuestWebUrl(payload: string) {
+  const raw = payload.trim();
+  if (!raw || /\s/.test(raw) || !isUrlLike(raw)) return null;
+  try {
+    const normalized = normalizeUrl(raw);
+    const parsed = new URL(normalized);
+    return (parsed.protocol === "https:" || parsed.protocol === "http:") && parsed.hostname ? normalized : null;
+  } catch {
+    return null;
+  }
 }
 
 function formatApiErrorMessage(status: number, body: unknown) {
@@ -269,6 +282,18 @@ export const api = {
     }
   },
   scan: {
+    guestUrl(payload: string, url: string) {
+      return request(endpoints.publicAnalyze, {
+        method: "POST",
+        auth: false,
+        body: JSON.stringify({ url })
+      }).then((body) => enhanceAnalyzeResult({
+        ...parseResponse(AnalyzeResultSchema, body),
+        rawPayload: payload,
+        payloadType: "URL",
+        source: "backend"
+      }));
+    },
     analyze(payload: string) {
       return request(endpoints.scanAnalyze, {
         method: "POST",
@@ -276,6 +301,7 @@ export const api = {
       }).then((body) => enhanceAnalyzeResult({ ...parseResponse(AnalyzeResultSchema, body), source: "backend" }));
     },
     async file(file: { uri: string; name: string; mimeType: string }) {
+      if (!accessToken) throw new Error("Sign in to analyze QR images or files. Guest scans can analyze direct web URLs with the camera.");
       // Backend `/api/scan/file` accepts a multipart upload — image (PNG/JPG),
       // SVG, or PDF — decodes the QR, and runs the same analyzer pipeline as
       // a live camera scan. We can't go through `request()` because that
@@ -405,7 +431,7 @@ export const api = {
       }
     },
     async wakeAnalyze(url: string) {
-      const body = await request(endpoints.wakeAnalyze, {
+      const body = await request(endpoints.publicAnalyze, {
         method: "POST",
         auth: false,
         retry: false,
@@ -418,6 +444,11 @@ export const api = {
 };
 
 export async function analyzeUrl(payload: string): Promise<AnalyzeResponse> {
+  if (!accessToken) {
+    const url = directGuestWebUrl(payload);
+    if (!url) throw new Error("Sign in to analyze payment, app action, and other non-web QR payloads. Guest scans support direct web URLs only.");
+    return api.scan.guestUrl(payload, url);
+  }
   return api.scan.analyze(payload);
 }
 
