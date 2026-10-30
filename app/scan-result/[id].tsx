@@ -1,4 +1,4 @@
-import { useMemo, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { Feather } from "@expo/vector-icons";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import * as Clipboard from "expo-clipboard";
@@ -14,6 +14,7 @@ import { Button } from "@/components/ui/Button";
 import { theme } from "@/constants/theme";
 import { api, type AnalyzeResult, type ScanHistoryItem } from "@/services/api";
 import { useScanStore } from "@/stores/scanStore";
+import { getOpenPolicy } from "@/utils/openPolicy";
 
 const verdictLabels: Record<AnalyzeResult["verdict"], string> = {
   safe: "SAFE",
@@ -39,7 +40,7 @@ const scoreRingRadius = (scoreRingSize - scoreRingStroke) / 2;
 const scoreRingCircumference = 2 * Math.PI * scoreRingRadius;
 
 function historyItemToAnalyzeResult(item: ScanHistoryItem): AnalyzeResult {
-  const verdict =
+  const recordedVerdict =
     item.verdict === "safe" || item.verdict === "warn" || item.verdict === "danger"
       ? item.verdict
       : item.riskScore >= 80
@@ -47,21 +48,25 @@ function historyItemToAnalyzeResult(item: ScanHistoryItem): AnalyzeResult {
         : item.riskScore >= 40
           ? "warn"
           : "safe";
+  const verdict = recordedVerdict === "safe" ? "warn" : recordedVerdict;
+  const riskScore = Math.max(item.riskScore, recordedVerdict === "safe" ? 40 : 0);
 
   return {
     scanId: item.scanId,
     url: item.url,
-    riskScore: item.riskScore,
+    riskScore,
     verdict,
     verdictText: verdictLabels[verdict],
     signals: item.signals,
     analyzedAt: item.analyzedAt,
     overallRisk: verdict === "danger" ? "high" : verdict === "warn" ? "suspicious" : "safe",
-    confidenceScore: item.riskScore,
+    confidenceScore: riskScore,
     scannedAt: item.scannedAt,
     counted: undefined,
     scanCount: undefined,
     payloadType: undefined,
+    verificationStatus: "incomplete",
+    unverifiedChecks: ["Historical verdict needs a new scan"],
     source: "backend"
   };
 }
@@ -202,6 +207,12 @@ export default function ScanResultScreen() {
   const cachedResult = queryClient.getQueryData<AnalyzeResult>(["scan-result", scanId]);
   const localResult = useScanStore((state) => state.history.find((scan) => scan.scanId === scanId || scan.id === scanId));
   const [actionMessage, setActionMessage] = useState("");
+  const [openAcknowledged, setOpenAcknowledged] = useState(false);
+
+  useEffect(() => {
+    setOpenAcknowledged(false);
+    setActionMessage("");
+  }, [scanId]);
 
   const historyQuery = useQuery({
     queryKey: ["scan-history-result", scanId],
@@ -262,15 +273,28 @@ export default function ScanResultScreen() {
 
   const continueSafely = async () => {
     if (!result) return;
-    const destination = extractFirstUrl(result.url) || result.url;
+    const policy = getOpenPolicy(result);
+    if (policy.kind === "blocked") {
+      setActionMessage(policy.reason);
+      return;
+    }
+    if (policy.kind === "caution" && !openAcknowledged) {
+      setActionMessage("Confirm that you understand the risk before opening this link.");
+      return;
+    }
 
     try {
-      const canOpen = await Linking.canOpenURL(destination);
+      const canOpen = await Linking.canOpenURL(policy.destination);
       if (!canOpen) {
         setActionMessage("No launchable URL found in this payload.");
         return;
       }
-      await Linking.openURL(destination);
+      const latestPolicy = getOpenPolicy(result);
+      if (latestPolicy.kind === "blocked" || (latestPolicy.kind === "caution" && !openAcknowledged)) {
+        setActionMessage("The verdict needs fresh review before this link can open.");
+        return;
+      }
+      await Linking.openURL(latestPolicy.destination);
     } catch {
       setActionMessage("Could not open destination.");
     }
@@ -291,6 +315,7 @@ export default function ScanResultScreen() {
   }
 
   const verdictColor = verdictColors[result.verdict];
+  const openPolicy = getOpenPolicy(result);
   const threatSummary = getThreatSummary(result);
   const payloadLabel = getPayloadLabel(result);
   const sortedSignals = [...result.signals].sort((a, b) => severityRank(b.severity) - severityRank(a.severity));
@@ -300,7 +325,7 @@ export default function ScanResultScreen() {
 
   return (
     <View style={{ flex: 1, backgroundColor: theme.colors.background }}>
-      {result.verdict === "safe" ? <ConfettiCannon count={70} origin={{ x: 180, y: -20 }} fadeOut autoStart /> : null}
+      {openPolicy.kind === "safe" ? <ConfettiCannon count={70} origin={{ x: 180, y: -20 }} fadeOut autoStart /> : null}
       <ScrollView
         style={{ flex: 1 }}
         contentContainerStyle={{
@@ -371,8 +396,19 @@ export default function ScanResultScreen() {
         </Section>
 
         <Section title="Decoded URL / Payload">
-          <Text className="font-mono text-sm leading-6 text-textPrimary">{result.url}</Text>
+          <Text className="font-mono text-sm leading-6 text-textPrimary">{result.rawPayload ?? result.url}</Text>
         </Section>
+
+        {result.verificationStatus !== "complete" || (result.unverifiedChecks?.length ?? 0) > 0 ? (
+          <Section title="Verification incomplete">
+            <Text className="font-ui text-sm leading-6 text-textSecondary">
+              Some required checks did not complete. This result does not verify that the destination is safe.
+            </Text>
+            {(result.unverifiedChecks ?? []).map((check) => (
+              <Text key={check} className="mt-2 font-ui text-sm text-textSecondary">• {check}</Text>
+            ))}
+          </Section>
+        ) : null}
 
         <Section title="Final risk score">
           <View className="flex-row items-center justify-between gap-3">
@@ -419,7 +455,7 @@ export default function ScanResultScreen() {
                 <Text className="font-mono text-[10px] text-accent">rules + signals</Text>
               </View>
               <Text className="font-ui text-sm text-textPrimary" style={{ lineHeight: 24 }}>
-                Transparent QR checks decide this score. The weak backend ML score is no longer shown or used as the primary verdict.
+                The backend verdict and local QR signals are combined conservatively. A local check cannot lower a backend risk verdict.
               </Text>
             </View>
             <ScoreBar
@@ -432,7 +468,7 @@ export default function ScanResultScreen() {
               label="Final score"
               score={result.riskScore}
               color={verdictColor}
-              detail="Generic backend warnings are reduced for trusted domains unless concrete malicious indicators are present."
+              detail="The final score keeps the highest risk found by the backend or local QR checks. Incomplete verification adds caution."
             />
           </View>
         </Section>
@@ -476,7 +512,34 @@ export default function ScanResultScreen() {
             <Button title="Block & Report" variant="danger" onPress={reportScan} />
           </View>
         </View>
-        <Button title="Continue Safely" variant="primary" onPress={continueSafely} />
+        {openPolicy.kind === "blocked" ? (
+          <View className="rounded-web border border-risk-danger-border bg-risk-danger-bg px-4 py-4">
+            <Text className="font-ui text-sm leading-6 text-risk-danger-text">{openPolicy.reason}</Text>
+          </View>
+        ) : (
+          <View className="gap-3">
+            <Text className="font-ui text-sm leading-6 text-textSecondary">{openPolicy.reason}</Text>
+            {openPolicy.kind === "caution" ? (
+              <Pressable
+                accessibilityRole="checkbox"
+                accessibilityState={{ checked: openAcknowledged }}
+                onPress={() => setOpenAcknowledged((value) => !value)}
+                className="flex-row items-start gap-3 rounded-web border border-risk-warn-border bg-risk-warn-bg px-4 py-4"
+              >
+                <Text className="font-ui text-lg text-risk-warn-text">{openAcknowledged ? "☑" : "☐"}</Text>
+                <Text className="flex-1 font-ui text-sm leading-6 text-risk-warn-text">
+                  I understand this link may be unsafe or unverified, and I checked the destination independently.
+                </Text>
+              </Pressable>
+            ) : null}
+            <Button
+              title={openPolicy.kind === "safe" ? "Open checked link" : "Open link anyway"}
+              variant={openPolicy.kind === "safe" ? "primary" : "secondary"}
+              disabled={openPolicy.kind === "caution" && !openAcknowledged}
+              onPress={continueSafely}
+            />
+          </View>
+        )}
       </ScrollView>
     </View>
   );

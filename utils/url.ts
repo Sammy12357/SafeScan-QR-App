@@ -1,5 +1,5 @@
 export function isUrlLike(value: string): boolean {
-  return /^https?:\/\//i.test(value.trim()) || /^[a-z0-9.-]+\.[a-z]{2,}(\/|$)/i.test(value.trim());
+  return /^https?:\/\//i.test(value.trim()) || /^[a-z0-9.-]+\.[a-z]{2,}(?::\d{1,5})?([/?#]|$)/i.test(value.trim());
 }
 
 export function normalizeUrl(value: string): string {

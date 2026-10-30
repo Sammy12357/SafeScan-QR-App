@@ -51,6 +51,8 @@ Core flows:
 - Show airdrop tier progress.
 - Share scan reports and referral links.
 
+Guest camera scans of direct web URLs use the public `/api/analyze` JSON endpoint. Payment and app-action payloads and image uploads require a backend sign-in. A failed or incomplete backend check never becomes a demo SAFE verdict.
+
 ## Development Phases
 
 1. Foundation: Expo scaffold, design system, stores, API layer.
