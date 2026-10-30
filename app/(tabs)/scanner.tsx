@@ -136,7 +136,7 @@ export default function ScannerScreen() {
       : false;
 
     setQrInFrame(isInsideFrame);
-    setFramedQrPayload(isInsideFrame ? result.data.trim() : null);
+    setFramedQrPayload(isInsideFrame && result.data.trim() ? result.data : null);
     if (detectionTimeoutRef.current) clearTimeout(detectionTimeoutRef.current);
     detectionTimeoutRef.current = setTimeout(() => {
       setQrInFrame(false);

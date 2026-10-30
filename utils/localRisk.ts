@@ -16,15 +16,6 @@ const SHORTENER_HOSTS = new Set([
   "trib.al"
 ]);
 
-const TRUSTED_DOMAINS = new Set([
-  "apple.com",
-  "github.com",
-  "google.com",
-  "microsoft.com",
-  "youtu.be",
-  "youtube.com"
-]);
-
 const CRYPTO_TERMS = ["airdrop", "approve", "claim", "connect", "drain", "mint", "phantom", "seed", "solana", "token", "wallet"];
 const PHISHING_TERMS = ["account", "billing", "confirm", "login", "password", "recover", "secure", "signin", "support", "update", "verify"];
 const SCRIPT_PATTERN = /(?:javascript:|<\s*script|<\s*svg|on(?:click|error|load)\s*=|alert\s*\(|document\.cookie|<\/(?:title|style|textarea|script)>)/i;
@@ -50,7 +41,6 @@ type LocalRisk = {
   signals: Signal[];
   threatType?: string;
   domain?: string;
-  trustedDomain?: boolean;
 };
 
 function clampScore(score: number) {
@@ -67,7 +57,6 @@ function signal(label: string, severity: Signal["severity"], result: string, des
     passed
   };
 }
-
 function firstUrl(payload: string) {
   return payload.match(/https?:\/\/[^\s]+/i)?.[0] ?? "";
 }
@@ -142,33 +131,6 @@ function dedupeSignals(signals: Signal[]) {
   });
 }
 
-function getUrlDomain(payload: string) {
-  const decodedUrl = firstUrl(payload) || payload.trim();
-  try {
-    return registrableDomain(new URL(decodedUrl).hostname);
-  } catch {
-    return "";
-  }
-}
-
-function isTrustedDomain(domain: string) {
-  return TRUSTED_DOMAINS.has(domain);
-}
-
-function isConcreteHighRiskSignal(signal: Signal) {
-  if (signal.passed || signal.severity !== "high") return false;
-  const label = signal.label.toLowerCase();
-  const result = signal.result.toLowerCase();
-  const description = signal.description.toLowerCase();
-  return /script|injection|command|wallet|drain|brand|spoof|punycode|raw ip|deception|executable|malware/.test(`${label} ${result} ${description}`);
-}
-
-function shouldIgnoreBackendSignal(signal: Signal, trustedDomain: boolean) {
-  if (!trustedDomain) return false;
-  const text = `${signal.label} ${signal.check} ${signal.result} ${signal.description}`.toLowerCase();
-  return text.includes("redirect chain") || text.includes("domain differs") || text.includes("intermediate domain");
-}
-
 function computeUrlRisk(payload: string): LocalRisk {
   const decodedUrl = firstUrl(payload) || payload.trim();
   const signals: Signal[] = [];
@@ -208,7 +170,6 @@ function computeUrlRisk(payload: string): LocalRisk {
   const hostname = parsed.hostname.toLowerCase();
   const hostParts = hostnameParts(hostname);
   const domain = registrableDomain(hostname);
-  const trustedDomain = isTrustedDomain(domain);
   const tld = hostParts.at(-1) ?? "";
   const pathAndQuery = `${parsed.pathname} ${parsed.search}`.toLowerCase();
   const fullText = decodedUrl.toLowerCase();
@@ -288,46 +249,33 @@ function computeUrlRisk(payload: string): LocalRisk {
         ? "Credential phishing indicators"
         : "Benign or low-risk URL";
 
-  return { score, signals, threatType, domain, trustedDomain };
+  return { score, signals, threatType, domain };
 }
 
 export function enhanceAnalyzeResult(result: AnalyzeResult): AnalyzeResult {
   const { mlRisk: _ignoredMlRisk, ...baseResult } = result;
   const localRisk = computeUrlRisk(result.url);
-  const trustedDomain = localRisk.trustedDomain ?? isTrustedDomain(getUrlDomain(result.url));
-  const backendSignals = result.signals.filter((item) => !shouldIgnoreBackendSignal(item, trustedDomain));
-  const ignoredBackendSignals = result.signals.length - backendSignals.length;
-  const hasConcreteLocalHighRisk = localRisk.signals.some(isConcreteHighRiskSignal);
-  const hasConcreteBackendHighRisk = backendSignals.some(isConcreteHighRiskSignal);
-  const signalScore = scoreFromSignals(backendSignals);
+  const signalScore = scoreFromSignals(result.signals);
   const ruleScore = clampScore(Math.max(localRisk.score, signalScore));
   const backendScore = clampScore(result.riskScore ?? result.confidenceScore ?? 0);
-  const finalScore =
-    trustedDomain && !hasConcreteLocalHighRisk && !hasConcreteBackendHighRisk
-      ? clampScore(Math.max(ruleScore, Math.min(backendScore, 24)))
-      : clampScore(Math.max(backendScore, ruleScore));
+  const unverifiedChecks = Array.from(new Set([
+    ...(result.unverifiedChecks ?? []),
+    ...result.signals.filter((item) => item.verified === false).map((item) => item.check)
+  ]));
+  const incomplete = result.source !== "backend" || result.verificationStatus !== "complete" || unverifiedChecks.length > 0;
+  const backendRiskFloor = result.overallRisk === "high" ? 80 : result.overallRisk === "suspicious" ? 40 : 0;
+  const finalScore = clampScore(Math.max(backendScore, ruleScore, backendRiskFloor, incomplete ? 40 : 0));
   const scoreVerdict = verdictFromScore(finalScore);
-  const verdict = trustedDomain && !hasConcreteLocalHighRisk && !hasConcreteBackendHighRisk ? scoreVerdict : verdictRank(result.verdict) > verdictRank(scoreVerdict) ? result.verdict : scoreVerdict;
-  const trustSignal =
-    trustedDomain && ignoredBackendSignals
-      ? [
-          signal(
-            "Trusted destination context",
-            "low",
-            `Generic redirect warning reduced for ${localRisk.domain}.`,
-            "SafeScan did not find concrete script, wallet-drain, spoofing, or injection indicators, so a generic redirect-chain warning was not allowed to mark this trusted destination as dangerous.",
-            true
-          )
-        ]
-      : [];
-  const signals = dedupeSignals([...trustSignal, ...localRisk.signals, ...backendSignals]);
-
-  const verdictText =
-    finalScore > backendScore
-      ? `SafeScan raised the score from ${backendScore}/100 to ${finalScore}/100 because concrete QR safety checks found stronger risk indicators. Treat this as ${verdictLabels(verdict).toLowerCase()} and verify the destination before continuing.`
-      : finalScore < backendScore
-        ? `SafeScan reduced an over-broad backend warning because the decoded destination is a trusted domain and no concrete script, wallet-drain, spoofing, or injection indicators were found. Still verify the destination before continuing.`
-      : result.verdictText;
+  const verdict = verdictRank(result.verdict) > verdictRank(scoreVerdict) ? result.verdict : scoreVerdict;
+  const signals = dedupeSignals([...localRisk.signals, ...result.signals]);
+  const changed = finalScore !== backendScore || verdict !== result.verdict;
+  const verdictText = !changed
+    ? result.verdictText
+    : verdict === "danger"
+      ? "SafeScan found high-risk signals. Do not open this destination."
+      : incomplete
+        ? "SafeScan could not complete every required check. Verify this destination independently before continuing."
+        : "SafeScan found caution signals. Verify the destination before continuing.";
 
   return {
     ...baseResult,
@@ -336,14 +284,10 @@ export function enhanceAnalyzeResult(result: AnalyzeResult): AnalyzeResult {
     verdict,
     verdictText,
     overallRisk: legacyRiskFromVerdict(verdict),
+    verificationStatus: incomplete ? "incomplete" : "complete",
+    unverifiedChecks,
     signals,
     ruleScore,
     threatType: result.threatType ?? localRisk.threatType
   };
-}
-
-function verdictLabels(verdict: AnalyzeResult["verdict"]) {
-  if (verdict === "danger") return "Dangerous";
-  if (verdict === "warn") return "Caution";
-  return "Safe";
 }
