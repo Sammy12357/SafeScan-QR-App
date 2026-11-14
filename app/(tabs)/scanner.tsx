@@ -18,8 +18,6 @@ const CORNER_SIZE = 34;
 const CORNER_WIDTH = 4;
 // The full camera frame remains useful for scanning; keep the reticle a hint.
 const CAMERA_VIGNETTE = "rgba(10, 10, 15, 0.42)";
-// Expo exposes only a normalized fraction of each device's zoom range.
-const ZOOM_IN_LEVEL = 0.3;
 
 function ScanCorner({ detected, style }: { detected: boolean; style: object }) {
   const progress = useSharedValue(0);
@@ -94,7 +92,6 @@ export default function ScannerScreen() {
   const [qrOutlines, setQrOutlines] = useState<QrBox[]>([]);
   const [capturePending, setCapturePending] = useState(false);
   const [torchOn, setTorchOn] = useState(false);
-  const [zoomIn, setZoomIn] = useState(false);
   const seenQrRef = useRef<SeenQr[]>([]);
   const capturePendingRef = useRef(false);
   const captureSawMultipleRef = useRef(false);
@@ -214,7 +211,6 @@ export default function ScannerScreen() {
         facing="back"
         autofocus="off"
         enableTorch={torchOn}
-        zoom={zoomIn ? ZOOM_IN_LEVEL : 0}
         active={!isAnalyzing}
         barcodeScannerSettings={{ barcodeTypes: ["qr"] }}
         onBarcodeScanned={isAnalyzing ? undefined : handleQrDetected}
@@ -233,12 +229,7 @@ export default function ScannerScreen() {
         <Text style={{ color: theme.colors.textPrimary, fontSize: 24, fontFamily: theme.fonts.display, textAlign: "center", letterSpacing: 0.4 }}>SafeScan QR</Text>
       </View>
 
-      <View style={{ position: "absolute", top: insets.top + 62, left: 18, right: 18, flexDirection: "row", justifyContent: "space-between" }}>
-        <Pressable accessibilityRole="button" accessibilityLabel={zoomIn ? "Reset camera zoom" : "Zoom in on QR code"}
-          onPress={() => setZoomIn((value) => !value)} disabled={isAnalyzing || capturePending}
-          style={{ borderRadius: 8, borderWidth: 1, borderColor: theme.colors.border, backgroundColor: theme.colors.surfaceElevated, paddingHorizontal: 14, paddingVertical: 10 }}>
-          <Text style={{ color: theme.colors.textPrimary, fontFamily: theme.fonts.display }}>{zoomIn ? "1× Reset" : "Zoom in"}</Text>
-        </Pressable>
+      <View style={{ position: "absolute", top: insets.top + 62, right: 18 }}>
         <Pressable accessibilityRole="button" accessibilityLabel={torchOn ? "Turn flashlight off" : "Turn flashlight on"}
           onPress={() => setTorchOn((value) => !value)} disabled={isAnalyzing || capturePending}
           style={{ borderRadius: 8, borderWidth: 1, borderColor: theme.colors.border, backgroundColor: theme.colors.surfaceElevated, paddingHorizontal: 14, paddingVertical: 10 }}>
