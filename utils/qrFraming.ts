@@ -59,3 +59,23 @@ export function recordSeenQr(seen: SeenQr[], next: SeenQr, now: number, windowMs
   else current.push(next);
   return current.slice(-4);
 }
+
+export function decideObservedQrCapture(
+  first: SeenQr | null,
+  seen: SeenQr[],
+  sawMultiple: boolean,
+  now: number,
+  frame: QrBox
+): { ambiguous: boolean; payload: string | null } {
+  const recent = seen.filter((entry) => now - entry.seenAt <= 650);
+  const changed = Boolean(first && recent.length === 1 &&
+    recordSeenQr([first], recent[0], now, 1500).length > 1);
+  if (sawMultiple || seen.length > 1 || changed || recent.length > 1) {
+    return { ambiguous: true, payload: null };
+  }
+  const only = recent[0];
+  return {
+    ambiguous: false,
+    payload: only && centerWithinExpandedFrame(only.box, frame) ? only.payload : null
+  };
+}

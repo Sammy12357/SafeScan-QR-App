@@ -10,7 +10,7 @@ import { theme } from "@/constants/theme";
 import { useScanner } from "@/hooks/useScanner";
 import { useScanStore } from "@/stores/scanStore";
 import { truncateMiddle } from "@/utils/url";
-import { boxFromQr, centerWithinExpandedFrame, recordSeenQr, type QrBox, type SeenQr } from "@/utils/qrFraming";
+import { boxFromQr, centerWithinExpandedFrame, decideObservedQrCapture, recordSeenQr, type QrBox, type SeenQr } from "@/utils/qrFraming";
 
 const MIN_FRAME_SIZE = 292;
 const MAX_FRAME_SIZE = 344;
@@ -92,10 +92,13 @@ export default function ScannerScreen() {
   const [qrOutsideFrame, setQrOutsideFrame] = useState(false);
   const [multipleCodes, setMultipleCodes] = useState(false);
   const [qrOutlines, setQrOutlines] = useState<QrBox[]>([]);
-  const [framedQrPayload, setFramedQrPayload] = useState<string | null>(null);
+  const [capturePending, setCapturePending] = useState(false);
   const [torchOn, setTorchOn] = useState(false);
   const [zoomIn, setZoomIn] = useState(false);
   const seenQrRef = useRef<SeenQr[]>([]);
+  const capturePendingRef = useRef(false);
+  const captureSawMultipleRef = useRef(false);
+  const mountedRef = useRef(true);
   const detectionTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const frameSize = useMemo(() => Math.min(Math.max(width - 72, MIN_FRAME_SIZE), MAX_FRAME_SIZE), [width]);
   const frame = useMemo(() => {
@@ -118,7 +121,9 @@ export default function ScannerScreen() {
   const captureButtonBottom = uploadButtonBottom + 66;
 
   useEffect(() => {
+    mountedRef.current = true;
     return () => {
+      mountedRef.current = false;
       if (detectionTimeoutRef.current) clearTimeout(detectionTimeoutRef.current);
     };
   }, []);
@@ -130,23 +135,52 @@ export default function ScannerScreen() {
     const now = Date.now();
     seenQrRef.current = recordSeenQr(seenQrRef.current, { payload, box, seenAt: now }, now);
     const hasMultipleCodes = seenQrRef.current.length > 1;
+    if (capturePendingRef.current && hasMultipleCodes) captureSawMultipleRef.current = true;
     const isNearFrame = centerWithinExpandedFrame(box, frame);
 
     setMultipleCodes(hasMultipleCodes);
     setQrInFrame(isNearFrame && !hasMultipleCodes);
     setQrOutsideFrame(!isNearFrame && !hasMultipleCodes);
     setQrOutlines(seenQrRef.current.map((entry) => entry.box));
-    setFramedQrPayload(isNearFrame && !hasMultipleCodes ? payload : null);
     if (detectionTimeoutRef.current) clearTimeout(detectionTimeoutRef.current);
     detectionTimeoutRef.current = setTimeout(() => {
+      if (capturePendingRef.current) return;
       seenQrRef.current = [];
       setQrInFrame(false);
       setQrOutsideFrame(false);
       setMultipleCodes(false);
       setQrOutlines([]);
-      setFramedQrPayload(null);
     }, 650);
   }, [frame]);
+
+  const handleCapture = useCallback(async () => {
+    if (capturePendingRef.current || isAnalyzing) return;
+    capturePendingRef.current = true;
+    captureSawMultipleRef.current = seenQrRef.current.length > 1;
+    setCapturePending(true);
+    const first = seenQrRef.current.length === 1 ? seenQrRef.current[0] : null;
+    // Let the camera report any competing symbol before accepting a fast-path
+    // payload. The reference is read again after the window; React state may lag.
+    await new Promise((resolve) => setTimeout(resolve, 650));
+    if (!mountedRef.current) return;
+    const decision = decideObservedQrCapture(
+      first, seenQrRef.current, captureSawMultipleRef.current, Date.now(), frame
+    );
+    capturePendingRef.current = false;
+    setCapturePending(false);
+    if (decision.ambiguous) {
+      setMultipleCodes(true);
+      setQrInFrame(false);
+      if (detectionTimeoutRef.current) clearTimeout(detectionTimeoutRef.current);
+      detectionTimeoutRef.current = setTimeout(() => {
+        seenQrRef.current = [];
+        setMultipleCodes(false);
+        setQrOutlines([]);
+      }, 650);
+      return;
+    }
+    await captureAndScan(decision.payload);
+  }, [captureAndScan, frame, isAnalyzing]);
 
   if (hasPermission === null) {
     return (
@@ -178,7 +212,7 @@ export default function ScannerScreen() {
         ref={cameraRef}
         style={{ flex: 1 }}
         facing="back"
-        autofocus="on"
+        autofocus="off"
         enableTorch={torchOn}
         zoom={zoomIn ? ZOOM_IN_LEVEL : 0}
         active={!isAnalyzing}
@@ -201,12 +235,12 @@ export default function ScannerScreen() {
 
       <View style={{ position: "absolute", top: insets.top + 62, left: 18, right: 18, flexDirection: "row", justifyContent: "space-between" }}>
         <Pressable accessibilityRole="button" accessibilityLabel={zoomIn ? "Reset camera zoom" : "Zoom in on QR code"}
-          onPress={() => setZoomIn((value) => !value)} disabled={isAnalyzing}
+          onPress={() => setZoomIn((value) => !value)} disabled={isAnalyzing || capturePending}
           style={{ borderRadius: 8, borderWidth: 1, borderColor: theme.colors.border, backgroundColor: theme.colors.surfaceElevated, paddingHorizontal: 14, paddingVertical: 10 }}>
           <Text style={{ color: theme.colors.textPrimary, fontFamily: theme.fonts.display }}>{zoomIn ? "1× Reset" : "Zoom in"}</Text>
         </Pressable>
         <Pressable accessibilityRole="button" accessibilityLabel={torchOn ? "Turn flashlight off" : "Turn flashlight on"}
-          onPress={() => setTorchOn((value) => !value)} disabled={isAnalyzing}
+          onPress={() => setTorchOn((value) => !value)} disabled={isAnalyzing || capturePending}
           style={{ borderRadius: 8, borderWidth: 1, borderColor: theme.colors.border, backgroundColor: theme.colors.surfaceElevated, paddingHorizontal: 14, paddingVertical: 10 }}>
           <Feather name={torchOn ? "zap-off" : "zap"} size={18} color={theme.colors.textPrimary} />
         </Pressable>
@@ -224,11 +258,8 @@ export default function ScannerScreen() {
       <Pressable
         accessibilityRole="button"
         accessibilityLabel="Capture and scan QR code"
-        onPress={() => {
-          if (seenQrRef.current.length > 1) return;
-          void captureAndScan(framedQrPayload);
-        }}
-        disabled={isAnalyzing || multipleCodes}
+        onPress={() => { void handleCapture(); }}
+        disabled={isAnalyzing || capturePending || multipleCodes}
         style={({ pressed }) => ({
           position: "absolute",
           alignSelf: "center",
@@ -241,7 +272,7 @@ export default function ScannerScreen() {
           backgroundColor: theme.colors.surfaceElevated,
           alignItems: "center",
           justifyContent: "center",
-          opacity: isAnalyzing || multipleCodes ? 0.5 : pressed ? 0.82 : 1
+          opacity: isAnalyzing || capturePending || multipleCodes ? 0.5 : pressed ? 0.82 : 1
         })}
       >
         <Feather name="camera" size={24} color={theme.colors.textPrimary} />
@@ -250,7 +281,7 @@ export default function ScannerScreen() {
       <Pressable
         accessibilityRole="button"
         onPress={pickFromLibrary}
-        disabled={isAnalyzing}
+        disabled={isAnalyzing || capturePending}
         style={({ pressed }) => ({
           position: "absolute",
           alignSelf: "center",
