@@ -9,6 +9,7 @@ import { StatusBar } from "expo-status-bar";
 import { useFonts } from "expo-font";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { OfflineBanner } from "@/components/OfflineBanner";
+import { AdultAgeModal } from "@/components/AdultAgeModal";
 import { ToastProvider } from "@/components/shared/ToastProvider";
 import { colors } from "@/constants/theme";
 import { useAuthStore } from "@/stores/authStore";
@@ -120,6 +121,7 @@ function RootNavigator({ fontsLoaded }: { fontsLoaded: boolean }) {
         <Slot />
       </ErrorBoundary>
       <OfflineBanner />
+      <AdultAgeModal />
     </>
   );
 }
