@@ -2,6 +2,7 @@ import * as SecureStore from "expo-secure-store";
 import { create } from "zustand";
 import { api, clearApiTokens, SafeScanApiError, setApiTokens, type AgeChallenge, type User } from "@/services/api";
 import { roleForEmail } from "@/constants/config";
+import { useAdultChallengeStore } from "@/stores/adultChallengeStore";
 
 const AUTH_TOKEN_KEY = "auth_token";
 const REFRESH_TOKEN_KEY = "refresh_token";
@@ -27,6 +28,7 @@ type AuthStore = AuthState & {
   hydrateFromStorage: () => Promise<void>;
   setUser: (user: User) => void;
   setWalletAddress: (walletAddress: string | null) => void;
+  adultConfirmed: () => void;
 };
 
 const initialState: AuthState = {
@@ -56,6 +58,7 @@ export const useAuthStore = create<AuthStore>((set, get) => ({
   ...initialState,
   continueAsDemoUser: () => {
     void clearStoredSession();
+    useAdultChallengeStore.getState().dismiss();
     set({
       user: normalizeUser({
         id: "demo-user",
@@ -144,6 +147,7 @@ export const useAuthStore = create<AuthStore>((set, get) => ({
     }
   },
   logout: async () => {
+    useAdultChallengeStore.getState().dismiss();
     try {
       await api.auth.logout();
     } catch {
@@ -194,5 +198,8 @@ export const useAuthStore = create<AuthStore>((set, get) => ({
   },
   setWalletAddress: (walletAddress) => {
     set({ walletAddress });
+  },
+  adultConfirmed: () => {
+    set((state) => ({ apiSessionVersion: state.apiSessionVersion + 1 }));
   }
 }));

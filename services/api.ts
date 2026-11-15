@@ -33,6 +33,7 @@ import {
   type WalletStatusResponse
 } from "@/utils/schemas";
 import { enhanceAnalyzeResult } from "@/utils/localRisk";
+import { useAdultChallengeStore } from "@/stores/adultChallengeStore";
 
 const AUTH_TOKEN_KEY = "auth_token";
 const REFRESH_TOKEN_KEY = "refresh_token";
@@ -44,6 +45,7 @@ let refreshTokenValue: string | null = null;
 const endpoints = {
   authVerify: "/auth/verify",
   authConfirmAge: "/auth/confirm-age/mobile",
+  authConfirmAdult: "/auth/confirm-adult/mobile",
   authRefresh: "/auth/refresh",
   authLogout: "/auth/logout",
   health: "/api/health",
@@ -210,7 +212,12 @@ async function request(path: string, options: RequestOptions = {}): Promise<unkn
     }
 
     const body = await readBody(response);
-    if (!response.ok) throw new SafeScanApiError(response.status, body);
+    if (!response.ok) {
+      if (response.status === 403 && options.auth !== false && path !== endpoints.authConfirmAdult) {
+        useAdultChallengeStore.getState().present(body);
+      }
+      throw new SafeScanApiError(response.status, body);
+    }
     return body;
   } finally {
     clearTimeout(timeout);
@@ -366,6 +373,14 @@ export const api = {
       const result = parseResponse(AuthResponseSchema, body);
       setApiTokens(result);
       return result;
+    },
+    async confirmAdult(ageTicket: string, birthYear: number, birthdayThisYear: "yes" | "no") {
+      const body = await request(endpoints.authConfirmAdult, {
+        method: "POST",
+        retry: false,
+        body: JSON.stringify({ ageTicket, birthYear, birthdayThisYear, adultAttestation: true })
+      });
+      return parseResponse(z.object({ adultConfirmed: z.literal(true) }), body);
     },
     async refreshToken(refreshToken: string) {
       const body = await request(endpoints.authRefresh, {
