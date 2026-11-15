@@ -97,11 +97,11 @@ export function useScanner(): {
 
   const onBarcodeScanned = useCallback(
     (data: string) => {
-      const payload = data.trim();
+      const payload = data;
       const now = Date.now();
       const recent = recentScanRef.current;
 
-      if (!payload || analyzeMutation.isPending) return;
+      if (!payload.trim() || analyzeMutation.isPending) return;
       if (recent?.payload === payload && now - recent.scannedAt < REPEAT_SCAN_WINDOW_MS) return;
 
       recentScanRef.current = { payload, scannedAt: now };
@@ -135,9 +135,9 @@ export function useScanner(): {
 
   const captureAndScan = useCallback(async (framedPayload?: string | null) => {
     setError(null);
-    const payload = framedPayload?.trim();
+    const payload = framedPayload;
 
-    if (payload) {
+    if (payload?.trim()) {
       void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
       analyzeMutation.mutate(payload);
       return;

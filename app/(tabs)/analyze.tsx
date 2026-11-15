@@ -65,22 +65,25 @@ function scanRecordToEntry(scan: ScanRecord): HistoryEntry {
 }
 
 function historyEntryToAnalyzeResult(item: HistoryEntry): AnalyzeResult {
+  const verdict = item.verdict;
+  const riskScore = item.riskScore;
   return {
     scanId: item.scanId,
     url: item.url,
-    riskScore: item.riskScore,
-    verdict: item.verdict,
-    verdictText: item.verdictText ?? "",
+    riskScore,
+    verdict,
+    verdictText: item.verdictText ?? "This is a historical result. Scan again for current verification.",
     signals: item.signals,
     analyzedAt: item.analyzedAt,
-    overallRisk: item.verdict === "danger" ? "high" : item.verdict === "warn" ? "suspicious" : "safe",
-    confidenceScore: item.riskScore,
+    overallRisk: verdict === "danger" ? "high" : verdict === "warn" ? "suspicious" : "safe",
+    confidenceScore: riskScore,
     scannedAt: item.scannedAt,
     counted: undefined,
     scanCount: undefined,
     payloadType: undefined,
     source: item.source,
-    verificationStatus: item.verificationStatus,
+    verificationStatus: "incomplete",
+    unverifiedChecks: ["Historical verdict needs a new scan"],
     historical: true
   };
 }

@@ -8,7 +8,7 @@ const VerificationStatusSchema = z.enum(["complete", "incomplete", "unverified",
 
 function riskScoreToVerdict(score: number) {
   if (score >= 80) return "danger" as const;
-  if (score >= 40) return "warn" as const;
+  if (score >= 35) return "warn" as const;
   return "safe" as const;
 }
 
@@ -39,7 +39,8 @@ const RawSignalSchema = z.object({
   description: z.string().optional(),
   detail: z.string().optional(),
   passed: z.boolean().optional(),
-  verified: z.boolean().optional()
+  verified: z.boolean().optional(),
+  checkedUrl: z.string().optional()
 });
 
 const MlRiskSchema = z
@@ -66,7 +67,8 @@ export const SignalSchema = RawSignalSchema.transform((signal) => {
     severity: signal.severity,
     description,
     passed: signal.passed,
-    ...(signal.verified !== undefined ? { verified: signal.verified } : {})
+    ...(signal.verified !== undefined ? { verified: signal.verified } : {}),
+    ...(signal.checkedUrl !== undefined ? { checkedUrl: signal.checkedUrl } : {})
   };
 });
 
@@ -105,6 +107,7 @@ export const AnalyzeResultSchema = z
     counted: z.boolean().optional(),
     scanCount: z.number().optional(),
     payloadType: z.string().optional(),
+    rawPayload: z.string().optional(),
     source: z.enum(["backend", "demo-fallback"]).optional(),
     verificationStatus: VerificationStatusSchema.optional(),
     unverifiedChecks: z.array(z.string()).optional(),
@@ -114,7 +117,8 @@ export const AnalyzeResultSchema = z
     threatType: z.string().optional()
   })
   .transform((result) => {
-    const riskScore = result.riskScore ?? result.confidenceScore ?? 0;
+    // Missing risk data is an incomplete verdict, never proof of safety.
+    const riskScore = result.riskScore ?? result.confidenceScore ?? 40;
     const verdict =
       result.verdict === "safe" || result.verdict === "warn" || result.verdict === "danger"
         ? result.verdict
@@ -135,6 +139,7 @@ export const AnalyzeResultSchema = z
       counted: result.counted,
       scanCount: result.scanCount,
       payloadType: result.payloadType,
+      ...(result.rawPayload !== undefined ? { rawPayload: result.rawPayload } : {}),
       source: result.source,
       ...(result.verificationStatus ? { verificationStatus: result.verificationStatus } : {}),
       ...(result.unverifiedChecks ? { unverifiedChecks: result.unverifiedChecks } : {}),

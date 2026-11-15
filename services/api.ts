@@ -35,8 +35,8 @@ import {
   type WalletStatusResponse
 } from "@/utils/schemas";
 import { enhanceAnalyzeResult } from "@/utils/localRisk";
-import { classifyWebVerdict, extractWebsiteScanFields } from "@/utils/verdictCopy";
 import { useAdultChallengeStore } from "@/stores/adultChallengeStore";
+import { isUrlLike, normalizeUrl } from "@/utils/url";
 
 const AUTH_TOKEN_KEY = "auth_token";
 const REFRESH_TOKEN_KEY = "refresh_token";
@@ -53,7 +53,7 @@ const endpoints = {
   authRefresh: "/auth/refresh",
   authLogout: "/auth/logout",
   health: "/api/health",
-  wakeAnalyze: "/api/analyze",
+  publicAnalyze: "/api/analyze",
   scanAnalyze: "/api/scan",
   scanFile: "/api/scan/file",
   scanHistory: "/api/scan/history",
@@ -118,6 +118,18 @@ type RequestOptions = RequestInit & {
 
 function apiUrl(path: string) {
   return `${API_BASE_URL}${path}`;
+}
+
+function directGuestWebUrl(payload: string) {
+  const raw = payload.trim();
+  if (!raw || /\s/.test(raw) || !isUrlLike(raw)) return null;
+  try {
+    const normalized = normalizeUrl(raw);
+    const parsed = new URL(normalized);
+    return (parsed.protocol === "https:" || parsed.protocol === "http:") && parsed.hostname ? normalized : null;
+  } catch {
+    return null;
+  }
 }
 
 function formatApiErrorMessage(status: number, body: unknown) {
@@ -246,114 +258,6 @@ function createUploadForm(file: { uri: string; name: string; mimeType: string })
   return form;
 }
 
-function decodeHtml(value: string) {
-  return value
-    .replace(/&amp;/g, "&")
-    .replace(/&lt;/g, "<")
-    .replace(/&gt;/g, ">")
-    .replace(/&quot;/g, "\"")
-    .replace(/&#39;/g, "'")
-    .replace(/&middot;/g, "-")
-    .replace(/&nbsp;/g, " ");
-}
-
-function verdictFromWeb(value: string): NonNullable<ReturnType<typeof classifyWebVerdict>> {
-  const classified = classifyWebVerdict(value);
-  if (classified) return classified;
-  throw new SafeScanApiError(422, { error: "Could not read the website scan verdict. Please scan again." });
-}
-
-function severityFromWeb(value: string): Signal["severity"] {
-  const normalized = value.toLowerCase();
-  if (normalized.includes("high")) return "high";
-  if (normalized.includes("medium")) return "medium";
-  return "low";
-}
-
-function parseWebScanResult(html: string): AnalyzeResult {
-  const fields = extractWebsiteScanFields(html);
-  if (!fields) throw new SafeScanApiError(422, { error: "Could not read the website scan result. Please scan again." });
-  const { verdictText, threatText, executionText, payload, verdictLabel } = fields;
-  const scoreMatch = html.match(/data-score="(\d+)"/i) ?? html.match(/<h3>(\d+)\s*\/\s*100<\/h3>/i);
-  const score = scoreMatch?.[1] ? Number(scoreMatch[1]) : 0;
-  const signals: Signal[] = [];
-  const reasonPattern = /<details class="reason-row"[\s\S]*?<strong>([\s\S]*?)<\/strong>[\s\S]*?<span class="severity-badge[^"]*">([\s\S]*?)<\/span>[\s\S]*?<p>([\s\S]*?)<\/p>[\s\S]*?<\/details>/gi;
-  let reasonMatch: RegExpExecArray | null;
-
-  while ((reasonMatch = reasonPattern.exec(html))) {
-    const label = decodeHtml(reasonMatch[1].replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim());
-    const severity = severityFromWeb(decodeHtml(reasonMatch[2]));
-    const description = decodeHtml(reasonMatch[3].replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim());
-    signals.push({
-      label,
-      check: label,
-      result: description,
-      severity,
-      description,
-      passed: severity === "low"
-    });
-  }
-
-  const { verdict, verificationStatus } = verdictFromWeb(verdictLabel);
-  const analyzedAt = new Date().toISOString();
-  const normalizedPayload = payload;
-  let payloadType = "text";
-  try {
-    const parsed = new URL(payload);
-    if ((parsed.protocol === "https:" || parsed.protocol === "http:") && payload === payload.trim() && !/\s/.test(payload)) payloadType = "url";
-  } catch {
-    // Non-web QR actions stay as decoded text.
-  }
-
-  return enhanceAnalyzeResult({
-    scanId: `web-upload:${Date.now()}`,
-    url: normalizedPayload,
-    riskScore: Math.max(0, Math.min(100, Number.isFinite(score) ? score : 0)),
-    verdict,
-    verdictText: verdictText || verdictLabel || "Scan complete.",
-    signals:
-      signals.length > 0
-        ? signals
-        : [
-            {
-              label: "Website scanner result",
-              check: "Website scanner result",
-              result: executionText || "SafeScan decoded the uploaded QR file.",
-              severity: verdict === "danger" ? "high" : verdict === "warn" ? "medium" : "low",
-              description: executionText || "SafeScan decoded the uploaded QR file.",
-              passed: verdict === "safe"
-            }
-          ],
-    analyzedAt,
-    overallRisk: verdict === "danger" ? "high" : verdict === "warn" ? "suspicious" : "safe",
-    confidenceScore: Math.max(0, Math.min(100, Number.isFinite(score) ? score : 0)),
-    scannedAt: analyzedAt,
-    counted: undefined,
-    scanCount: undefined,
-    payloadType,
-    source: "backend",
-    verificationStatus,
-    threatType: threatText || undefined
-  });
-}
-
-async function scanFileViaWebRoute(file: { uri: string; name: string; mimeType: string }) {
-  const form = createUploadForm(file);
-  form.append("template_variant", "main_site");
-  form.append("user_email", "");
-  form.append("wallet_address", "");
-  form.append("device_fingerprint", "mobile-app");
-
-  const response = await fetch(`${API_BASE_URL}/search_qr_api`, {
-    method: "POST",
-    body: form
-  });
-  const body = await readBody(response);
-  if (!response.ok) throw new SafeScanApiError(response.status, body);
-  if (typeof body !== "string") throw new SafeScanApiError(422, { error: "Unexpected upload response." });
-  return parseWebScanResult(body);
-}
-
 export const api = {
   auth: {
     async verifyToken(idToken: string) {
@@ -427,13 +331,26 @@ export const api = {
     }
   },
   scan: {
+    guestUrl(payload: string, url: string) {
+      return request(endpoints.publicAnalyze, {
+        method: "POST",
+        auth: false,
+        body: JSON.stringify({ url })
+      }).then((body) => enhanceAnalyzeResult({
+        ...parseResponse(AnalyzeResultSchema, body),
+        rawPayload: payload,
+        payloadType: "URL",
+        source: "backend"
+      }));
+    },
     analyze(payload: string) {
       return request(endpoints.scanAnalyze, {
         method: "POST",
         body: JSON.stringify({ payload })
-      }).then((body) => enhanceAnalyzeResult(parseResponse(AnalyzeResultSchema, body)));
+      }).then((body) => enhanceAnalyzeResult({ ...parseResponse(AnalyzeResultSchema, body), source: "backend" }));
     },
     async file(file: { uri: string; name: string; mimeType: string }) {
+      if (!accessToken) throw new Error("Sign in to analyze QR images or files. Guest scans can analyze direct web URLs with the camera.");
       // Backend `/api/scan/file` accepts a multipart upload — image (PNG/JPG),
       // SVG, or PDF — decodes the QR, and runs the same analyzer pipeline as
       // a live camera scan. We can't go through `request()` because that
@@ -441,34 +358,27 @@ export const api = {
       const headers = new Headers();
       if (accessToken) headers.set("Authorization", `Bearer ${accessToken}`);
 
-      try {
-        const response = await fetch(`${API_BASE_URL}${endpoints.scanFile}`, {
+      const response = await fetch(`${API_BASE_URL}${endpoints.scanFile}`, {
           method: "POST",
           headers,
           body: createUploadForm(file)
+      });
+      const body = await readBody(response);
+      if (response.status === 401 && refreshTokenValue) {
+        await refreshAccessToken();
+        const retryHeaders = new Headers();
+        if (accessToken) retryHeaders.set("Authorization", `Bearer ${accessToken}`);
+        const retry = await fetch(`${API_BASE_URL}${endpoints.scanFile}`, {
+          method: "POST",
+          headers: retryHeaders,
+          body: createUploadForm(file)
         });
-        const body = await readBody(response);
-        if (response.status === 401 && refreshTokenValue) {
-          await refreshAccessToken();
-          const retryHeaders = new Headers();
-          if (accessToken) retryHeaders.set("Authorization", `Bearer ${accessToken}`);
-          const retry = await fetch(`${API_BASE_URL}${endpoints.scanFile}`, {
-            method: "POST",
-            headers: retryHeaders,
-            body: createUploadForm(file)
-          });
-          const retryBody = await readBody(retry);
-          if (!retry.ok) throw new SafeScanApiError(retry.status, retryBody);
-          return enhanceAnalyzeResult(parseResponse(AnalyzeResultSchema, retryBody));
-        }
-        if (!response.ok) throw new SafeScanApiError(response.status, body);
-        return enhanceAnalyzeResult(parseResponse(AnalyzeResultSchema, body));
-      } catch (error) {
-        if (error instanceof SafeScanApiError && (error.status === 401 || error.status === 422)) {
-          return scanFileViaWebRoute(file);
-        }
-        throw error;
+        const retryBody = await readBody(retry);
+        if (!retry.ok) throw new SafeScanApiError(retry.status, retryBody);
+        return enhanceAnalyzeResult({ ...parseResponse(AnalyzeResultSchema, retryBody), source: "backend" });
       }
+      if (!response.ok) throw new SafeScanApiError(response.status, body);
+      return enhanceAnalyzeResult({ ...parseResponse(AnalyzeResultSchema, body), source: "backend" });
     },
     history() {
       return request(endpoints.scanHistory).then((body) => parseResponse(z.array(ScanHistoryItemSchema), body));
@@ -570,7 +480,7 @@ export const api = {
       }
     },
     async wakeAnalyze(url: string) {
-      const body = await request(endpoints.wakeAnalyze, {
+      const body = await request(endpoints.publicAnalyze, {
         method: "POST",
         auth: false,
         retry: false,
@@ -583,12 +493,12 @@ export const api = {
 };
 
 export async function analyzeUrl(payload: string): Promise<AnalyzeResponse> {
-  try {
-    const result = await api.scan.analyze(payload);
-    return { ...result, source: "backend" };
-  } catch {
-    return { ...mockAnalyzeResponse(payload), source: "demo-fallback" };
+  if (!accessToken) {
+    const url = directGuestWebUrl(payload);
+    if (!url) throw new Error("Sign in to analyze payment, app action, and other non-web QR payloads. Guest scans support direct web URLs only.");
+    return api.scan.guestUrl(payload, url);
   }
+  return api.scan.analyze(payload);
 }
 
 export async function verifyGoogleToken(token: string) {
@@ -612,16 +522,12 @@ export async function fetchAirdropStatus(): Promise<AirdropStatusResponse> {
 }
 
 export async function reportUrl(url: string, reason: string) {
-  try {
-    const body = await request(endpoints.scanReport, {
-      method: "POST",
-      body: JSON.stringify({ url, reason: normalizeReportReason(reason) })
-    });
-    parseResponse(ReportResponseSchema, body);
-    return { queued: false, url, reason };
-  } catch {
-    return { queued: true, url, reason };
-  }
+  const body = await request(endpoints.scanReport, {
+    method: "POST",
+    body: JSON.stringify({ url, reason: normalizeReportReason(reason) })
+  });
+  parseResponse(ReportResponseSchema, body);
+  return { sent: true, url, reason };
 }
 
 export function checkReputation(url: string) {
@@ -658,98 +564,4 @@ export function requestWalletNonce(walletAddress: string) {
 
 export function verifyWallet(walletAddress: string, signature: string) {
   return api.wallet.verify(walletAddress, signature);
-}
-
-export function mockAnalyzeResponse(input: string): AnalyzeResponse {
-  const normalized = input.trim() || "https://claim-sqr-airdrop.xyz/connect?approve=all";
-  const suspicious = /airdrop|claim|drain|approve|wallet|\.xyz|bit\.ly|tinyurl|t\.co/i.test(normalized);
-  const high = /drain|approve|wallet|\.xyz/i.test(normalized);
-  const overallRisk: AnalyzeResponse["overallRisk"] = high ? "high" : suspicious ? "suspicious" : "safe";
-  const confidenceScore = high ? 91 : suspicious ? 68 : 18;
-  const signals: Signal[] = high
-    ? [
-        {
-          label: "Domain Age",
-          check: "Domain Age",
-          result: "8 days old",
-          severity: "high",
-          description: "Newly registered domains are often used for short-lived QR phishing campaigns.",
-          passed: false
-        },
-        {
-          label: "Wallet Drain Pattern",
-          check: "Wallet Drain Pattern",
-          result: "Approval or wallet action detected",
-          severity: "high",
-          description: "The payload includes words commonly found in wallet-drain prompts, including approve, claim, or wallet connection language.",
-          passed: false
-        },
-        {
-          label: "Redirect Chain",
-          check: "Redirect Chain",
-          result: "2 hops detected",
-          severity: "medium",
-          description: "Multiple redirects make it harder for users to understand the final destination before signing or paying.",
-          passed: false
-        },
-        {
-          label: "TLD Reputation",
-          check: "TLD Reputation",
-          result: "Non-standard TLD",
-          severity: "low",
-          description: "The domain uses a TLD frequently seen in low-cost phishing infrastructure.",
-          passed: false
-        }
-      ]
-    : suspicious
-      ? [
-          {
-            label: "Campaign Language",
-            check: "Campaign Language",
-            result: "Airdrop or claim terms found",
-            severity: "medium",
-            description: "Airdrop and claim language can be legitimate, but it deserves extra caution when delivered through a QR code.",
-            passed: false
-          },
-          {
-            label: "Redirect Chain",
-            check: "Redirect Chain",
-            result: "No high-risk redirect pattern",
-            severity: "low",
-            description: "SafeScan did not detect a known URL shortener or suspicious final-domain swap in this demo pass.",
-            passed: true
-          }
-        ]
-      : [
-          {
-            label: "URL Format",
-            check: "URL Format",
-            result: "Valid HTTPS URL",
-            severity: "low",
-            description: "The payload uses a standard HTTPS URL and no wallet-drain keywords were detected in the mobile demo check.",
-            passed: true
-          }
-        ];
-
-  return enhanceAnalyzeResult({
-    scanId: `mock:${normalized}`,
-    url: normalized,
-    riskScore: confidenceScore,
-    verdict: overallRisk === "high" ? "danger" : overallRisk === "suspicious" ? "warn" : "safe",
-    verdictText:
-      overallRisk === "high"
-        ? "This QR code shows strong indicators of a phishing or wallet-drain flow. Block it unless you independently trust the sender and destination."
-        : overallRisk === "suspicious"
-          ? "This QR code includes campaign-style language and should be reviewed before continuing. SafeScan recommends checking the destination and avoiding wallet approvals."
-          : "This QR code does not show obvious high-risk signals in the mobile demo check. Continue only if the destination matches what you expected.",
-    analyzedAt: new Date().toISOString(),
-    overallRisk,
-    confidenceScore,
-    counted: undefined,
-    scanCount: undefined,
-    payloadType: undefined,
-    source: "demo-fallback",
-    signals,
-    scannedAt: new Date().toISOString()
-  });
 }

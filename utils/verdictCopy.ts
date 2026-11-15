@@ -13,47 +13,6 @@ export type ScanEvidence = {
   signals?: Array<{ severity: "low" | "medium" | "high"; passed?: boolean; verified?: boolean }>;
 };
 
-export function classifyWebVerdict(label: string): Pick<ScanEvidence, "verdict" | "verificationStatus"> | null {
-  const normalized = label.trim().toLowerCase();
-  if (normalized === "high-risk indicators") return { verdict: "danger" };
-  if (normalized === "no threats found in checks") return { verdict: "safe", verificationStatus: "complete" };
-  if (normalized === "content decoded") return { verdict: "safe", verificationStatus: "not_applicable" };
-  if (normalized === "needs review") return { verdict: "warn", verificationStatus: "complete" };
-  if (normalized === "could not fully check") return { verdict: "warn", verificationStatus: "incomplete" };
-  return null;
-}
-
-function decodeHtmlEntities(value: string) {
-  const named: Record<string, string> = { amp: "&", lt: "<", gt: ">", quot: '"', apos: "'", nbsp: " " };
-  return value.replace(/&(?:amp|lt|gt|quot|apos|nbsp|#\d+|#x[0-9a-f]+);/gi, (entity) => {
-    const key = entity.slice(1, -1).toLowerCase();
-    if (key in named) return named[key];
-    const codePoint = key.startsWith("#x") ? Number.parseInt(key.slice(2), 16) : Number.parseInt(key.slice(1), 10);
-    return Number.isInteger(codePoint) && codePoint > 0 && codePoint <= 0x10ffff
-      ? String.fromCodePoint(codePoint)
-      : entity;
-  });
-}
-
-function visibleText(html: string, pattern: RegExp) {
-  const match = pattern.exec(html);
-  return match?.[1] ? decodeHtmlEntities(match[1].replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim()) : "";
-}
-
-/** Read only the current SafeScan website result shape; absent fields fail closed. */
-export function extractWebsiteScanFields(html: string) {
-  const payloadMatch = /<p class="engine-label">Exact decoded QR payload<\/p>\s*<pre\b[^>]*class=["'][^"']*\bdecoded-payload\b[^"']*["'][^>]*>([\s\S]*?)<\/pre>/i.exec(html);
-  const verdictLabel = visibleText(html, /<h2 id="riskVerdictTitle">([\s\S]*?)<\/h2>/i);
-  if (!payloadMatch || !payloadMatch[1] || !classifyWebVerdict(verdictLabel)) return null;
-  return {
-    payload: decodeHtmlEntities(payloadMatch[1]),
-    verdictLabel,
-    verdictText: visibleText(html, /<p class="result-support">([\s\S]*?)<\/p>/i),
-    threatText: visibleText(html, /<p class="threat-type-line">[\s\S]*?<strong>Finding:<\/strong>\s*([\s\S]*?)<\/p>/i),
-    executionText: visibleText(html, /<p class="engine-label">What this QR requests<\/p>\s*<p>([\s\S]*?)<\/p>/i)
-  };
-}
-
 export function normalizeSavedVerdict(raw: string | undefined, riskScore: number): ScanEvidence["verdict"] {
   const verdict = (raw ?? "").trim().toLowerCase();
   if (["malicious", "high", "danger", "dangerous"].includes(verdict) || riskScore >= 75) return "danger";
