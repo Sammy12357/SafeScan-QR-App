@@ -35,6 +35,7 @@ import {
   type WalletStatusResponse
 } from "@/utils/schemas";
 import { enhanceAnalyzeResult } from "@/utils/localRisk";
+import { classifyWebVerdict } from "@/utils/verdictCopy";
 import { useAdultChallengeStore } from "@/stores/adultChallengeStore";
 
 const AUTH_TOKEN_KEY = "auth_token";
@@ -261,11 +262,10 @@ function decodeHtml(value: string) {
     .replace(/&nbsp;/g, " ");
 }
 
-function verdictFromWeb(value: string): AnalyzeResult["verdict"] {
-  const normalized = value.toLowerCase();
-  if (normalized.includes("danger") || normalized.includes("block")) return "danger";
-  if (normalized.includes("caution") || normalized.includes("suspicious")) return "warn";
-  return "safe";
+function verdictFromWeb(value: string): NonNullable<ReturnType<typeof classifyWebVerdict>> {
+  const classified = classifyWebVerdict(value);
+  if (classified) return classified;
+  throw new SafeScanApiError(422, { error: "Could not read the website scan verdict. Please scan again." });
 }
 
 function severityFromWeb(value: string): Signal["severity"] {
@@ -301,7 +301,7 @@ function parseWebScanResult(html: string): AnalyzeResult {
     });
   }
 
-  const verdict = verdictFromWeb(verdictLabel);
+  const { verdict, verificationStatus } = verdictFromWeb(verdictLabel);
   const analyzedAt = new Date().toISOString();
   const normalizedPayload = payload || "Uploaded QR payload";
 
@@ -332,6 +332,7 @@ function parseWebScanResult(html: string): AnalyzeResult {
     scanCount: undefined,
     payloadType: payload ? "url" : "file",
     source: "backend",
+    verificationStatus,
     threatType: threatText || undefined
   });
 }

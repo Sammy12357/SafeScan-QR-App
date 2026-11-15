@@ -7,13 +7,15 @@ import { RiskGauge } from "@/components/risk/RiskGauge";
 import { SignalAccordion } from "@/components/risk/SignalAccordion";
 import type { AnalyzeResponse } from "@/services/api";
 import { theme } from "@/constants/theme";
+import { getScanVerdictDisplay } from "@/utils/verdictCopy";
 
 const severityRank = { high: 0, medium: 1, low: 2 };
 
 export function RiskBreakdownPanel({ result }: { result: AnalyzeResponse }) {
   const signals = [...result.signals].sort((a, b) => severityRank[a.severity] - severityRank[b.severity]);
-  const tone = result.overallRisk === "high" ? "danger" : result.overallRisk === "suspicious" ? "warn" : "safe";
-  const status = tone === "danger" ? "DANGEROUS" : tone === "warn" ? "CAUTION" : "SAFE";
+  const display = getScanVerdictDisplay(result);
+  const tone = display.tone;
+  const status = display.label;
   const accent = theme.colors.risk[tone];
   const translateY = useSharedValue(28);
   const opacity = useSharedValue(0);
@@ -40,11 +42,11 @@ export function RiskBreakdownPanel({ result }: { result: AnalyzeResponse }) {
       ) : null}
 
       <View style={{ flexDirection: "row", gap: 16, alignItems: "center" }}>
-        <RiskGauge score={result.confidenceScore} verdict={status} />
+        <RiskGauge score={result.confidenceScore} tone={tone} />
         <View style={{ flex: 1 }}>
           <Text style={{ color: theme.colors.accent, fontSize: theme.fontSizes.lockedBadge, fontFamily: theme.fonts.sansSemiBold, letterSpacing: 1.7 }}>SCAN VERDICT</Text>
-          <Text style={{ color: theme.colors.textPrimary, fontSize: theme.fontSizes.riskModalTitle, lineHeight: 44, fontFamily: theme.fonts.sansSemiBold, marginTop: 4 }}>{status}</Text>
-          <Text style={{ color: theme.colors.textSecondary, lineHeight: 21, marginTop: 8 }}>{result.verdictText ?? result.verdict}</Text>
+          <Text style={{ color: theme.colors.textPrimary, fontSize: 23, lineHeight: 29, fontFamily: theme.fonts.sansSemiBold, marginTop: 4 }}>{status}</Text>
+          <Text style={{ color: theme.colors.textSecondary, lineHeight: 21, marginTop: 8 }}>{display.summary}</Text>
         </View>
       </View>
 
@@ -65,7 +67,7 @@ export function RiskBreakdownPanel({ result }: { result: AnalyzeResponse }) {
           <Text style={{ color: theme.colors.accent, fontSize: 11, fontFamily: theme.fonts.sansSemiBold, letterSpacing: 1.4 }}>CONFIDENCE BREAKDOWN</Text>
           <Text style={{ color: theme.colors.textPrimary, fontSize: 20, fontFamily: theme.fonts.sansSemiBold, marginTop: 4 }}>{result.confidenceScore} / 100 risk score</Text>
         </View>
-        <RiskBadge tone={tone} label={status} />
+        <RiskBadge tone={tone} label={tone === "danger" ? "HIGH RISK" : tone === "safe" ? "CHECKS COMPLETE" : "REVIEW"} />
       </View>
 
       {signals.map((signal) => (

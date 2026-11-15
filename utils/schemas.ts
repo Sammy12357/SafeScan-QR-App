@@ -4,6 +4,7 @@ const IsoStringSchema = z.string().min(1);
 const SeveritySchema = z.enum(["low", "medium", "high"]);
 const RiskVerdictSchema = z.enum(["safe", "warn", "danger"]);
 const LegacyRiskSchema = z.enum(["safe", "suspicious", "high"]);
+const VerificationStatusSchema = z.enum(["complete", "incomplete", "unverified", "not_applicable"]);
 
 function riskScoreToVerdict(score: number) {
   if (score >= 80) return "danger" as const;
@@ -37,7 +38,8 @@ const RawSignalSchema = z.object({
   severity: SeveritySchema,
   description: z.string().optional(),
   detail: z.string().optional(),
-  passed: z.boolean().optional()
+  passed: z.boolean().optional(),
+  verified: z.boolean().optional()
 });
 
 const MlRiskSchema = z
@@ -63,7 +65,8 @@ export const SignalSchema = RawSignalSchema.transform((signal) => {
     result,
     severity: signal.severity,
     description,
-    passed: signal.passed
+    passed: signal.passed,
+    ...(signal.verified !== undefined ? { verified: signal.verified } : {})
   };
 });
 
@@ -103,6 +106,9 @@ export const AnalyzeResultSchema = z
     scanCount: z.number().optional(),
     payloadType: z.string().optional(),
     source: z.enum(["backend", "demo-fallback"]).optional(),
+    verificationStatus: VerificationStatusSchema.optional(),
+    unverifiedChecks: z.array(z.string()).optional(),
+    historical: z.boolean().optional(),
     mlRisk: MlRiskSchema.optional(),
     ruleScore: z.number().min(0).max(100).optional(),
     threatType: z.string().optional()
@@ -130,6 +136,9 @@ export const AnalyzeResultSchema = z
       scanCount: result.scanCount,
       payloadType: result.payloadType,
       source: result.source,
+      ...(result.verificationStatus ? { verificationStatus: result.verificationStatus } : {}),
+      ...(result.unverifiedChecks ? { unverifiedChecks: result.unverifiedChecks } : {}),
+      ...(result.historical ? { historical: true } : {}),
       ...(result.mlRisk ? { mlRisk: result.mlRisk } : {}),
       ...(result.ruleScore !== undefined ? { ruleScore: result.ruleScore } : {}),
       ...(result.threatType ? { threatType: result.threatType } : {})
@@ -148,7 +157,8 @@ export const ScanHistoryItemSchema = z
     scannedAt: IsoStringSchema.optional(),
     created_at: IsoStringSchema.optional(),
     signals: z.array(SignalSchema).optional(),
-    reported: z.union([z.boolean(), z.number()]).optional()
+    reported: z.union([z.boolean(), z.number()]).optional(),
+    verificationStatus: VerificationStatusSchema.optional()
   })
   .transform((scan) => ({
     scanId: scan.scanId ?? scan.id ?? `${scan.url}:${scan.analyzedAt ?? scan.scannedAt ?? scan.created_at ?? ""}`,
@@ -159,7 +169,8 @@ export const ScanHistoryItemSchema = z
     analyzedAt: scan.analyzedAt ?? scan.scannedAt ?? scan.created_at ?? new Date(0).toISOString(),
     scannedAt: scan.scannedAt ?? scan.analyzedAt ?? scan.created_at ?? new Date(0).toISOString(),
     signals: scan.signals ?? [],
-    reported: Boolean(scan.reported)
+    reported: Boolean(scan.reported),
+    verificationStatus: scan.verificationStatus
   }));
 
 export const AirdropStatusSchema = z

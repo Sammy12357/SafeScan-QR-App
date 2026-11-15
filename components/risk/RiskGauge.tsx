@@ -19,15 +19,9 @@ function scoreTone(score: number): RiskTone {
   return "safe";
 }
 
-function scoreLabel(score: number) {
-  if (score > 70) return "DANGEROUS";
-  if (score > 40) return "CAUTION";
-  return "SAFE";
-}
-
-export function RiskGauge({ score, verdict }: { score: number; verdict?: string }) {
+export function RiskGauge({ score, tone: resultTone }: { score: number; tone?: RiskTone }) {
   const strokeDashoffset = useSharedValue(CIRCUMFERENCE);
-  const tone = scoreTone(score);
+  const tone = resultTone ?? scoreTone(score);
   const riskColors = colors.risk[tone];
 
   useEffect(() => {
@@ -40,7 +34,7 @@ export function RiskGauge({ score, verdict }: { score: number; verdict?: string 
 
   return (
     <View
-      accessibilityLabel={`Risk score: ${score} out of 100. Verdict: ${verdict ?? scoreLabel(score)}`}
+      accessibilityLabel={`Risk score: ${score} out of 100`}
       className="items-center"
     >
       <View
@@ -80,9 +74,6 @@ export function RiskGauge({ score, verdict }: { score: number; verdict?: string 
           {score}
         </Text>
       </View>
-      <Text style={{ ...typography.h3, color: riskColors.text, marginTop: 12 }}>
-        {verdict ?? scoreLabel(score)}
-      </Text>
       <Text style={{ ...typography.label, color: colors.textMuted, marginTop: 4 }}>Risk Score</Text>
     </View>
   );

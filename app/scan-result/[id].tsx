@@ -6,7 +6,6 @@ import * as FileSystem from "expo-file-system/legacy";
 import * as Linking from "expo-linking";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import * as Sharing from "expo-sharing";
-import ConfettiCannon from "react-native-confetti-cannon";
 import { ActivityIndicator, Pressable, ScrollView, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import Svg, { Circle } from "react-native-svg";
@@ -14,12 +13,7 @@ import { Button } from "@/components/ui/Button";
 import { theme } from "@/constants/theme";
 import { api, type AnalyzeResult, type ScanHistoryItem } from "@/services/api";
 import { useScanStore } from "@/stores/scanStore";
-
-const verdictLabels: Record<AnalyzeResult["verdict"], string> = {
-  safe: "SAFE",
-  warn: "CAUTION",
-  danger: "DANGEROUS"
-};
+import { canOpenScannedUrl, getScanVerdictDisplay, normalizeSavedVerdict } from "@/utils/verdictCopy";
 
 const verdictColors: Record<AnalyzeResult["verdict"], string> = {
   safe: theme.colors.safe,
@@ -39,21 +33,14 @@ const scoreRingRadius = (scoreRingSize - scoreRingStroke) / 2;
 const scoreRingCircumference = 2 * Math.PI * scoreRingRadius;
 
 function historyItemToAnalyzeResult(item: ScanHistoryItem): AnalyzeResult {
-  const verdict =
-    item.verdict === "safe" || item.verdict === "warn" || item.verdict === "danger"
-      ? item.verdict
-      : item.riskScore >= 80
-        ? "danger"
-        : item.riskScore >= 40
-          ? "warn"
-          : "safe";
+  const verdict = normalizeSavedVerdict(item.verdict, item.riskScore);
 
   return {
     scanId: item.scanId,
     url: item.url,
     riskScore: item.riskScore,
     verdict,
-    verdictText: verdictLabels[verdict],
+    verdictText: "",
     signals: item.signals,
     analyzedAt: item.analyzedAt,
     overallRisk: verdict === "danger" ? "high" : verdict === "warn" ? "suspicious" : "safe",
@@ -62,17 +49,21 @@ function historyItemToAnalyzeResult(item: ScanHistoryItem): AnalyzeResult {
     counted: undefined,
     scanCount: undefined,
     payloadType: undefined,
-    source: "backend"
+    source: "backend",
+    verificationStatus: item.verificationStatus,
+    historical: true
   };
 }
 
 function formatReport(result: AnalyzeResult) {
+  const display = getScanVerdictDisplay(result);
   const signals = result.signals.map((signal) => `- ${signal.label}: ${signal.severity}`).join("\n");
   return [
     "SafeScan QR Report",
     "",
     `URL: ${result.url}`,
-    `Verdict: ${verdictLabels[result.verdict]}`,
+    `Finding: ${display.label}`,
+    display.summary,
     `Risk score: ${result.riskScore}/100`,
     `Analyzed: ${new Date(result.analyzedAt).toLocaleString()}`,
     "",
@@ -90,7 +81,8 @@ function normalizeDescriptor(value?: string) {
 }
 
 function getThreatSummary(result: AnalyzeResult) {
-  return normalizeDescriptor(result.threatType) || result.verdictText || verdictLabels[result.verdict];
+  const display = getScanVerdictDisplay(result);
+  return display.tone === "danger" ? normalizeDescriptor(result.threatType) || display.label : display.label;
 }
 
 function getPayloadLabel(result: AnalyzeResult) {
@@ -260,17 +252,20 @@ export default function ScanResultScreen() {
     }
   };
 
-  const continueSafely = async () => {
+  const openDestination = async () => {
     if (!result) return;
-    const destination = extractFirstUrl(result.url) || result.url;
+    if (!canOpenScannedUrl(result)) {
+      setActionMessage("This result cannot authorize opening. Scan the QR again for a current check.");
+      return;
+    }
 
     try {
-      const canOpen = await Linking.canOpenURL(destination);
+      const canOpen = await Linking.canOpenURL(result.url);
       if (!canOpen) {
         setActionMessage("No launchable URL found in this payload.");
         return;
       }
-      await Linking.openURL(destination);
+      await Linking.openURL(result.url);
     } catch {
       setActionMessage("Could not open destination.");
     }
@@ -290,17 +285,18 @@ export default function ScanResultScreen() {
     );
   }
 
-  const verdictColor = verdictColors[result.verdict];
+  const display = getScanVerdictDisplay(result);
+  const verdictColor = verdictColors[display.tone];
   const threatSummary = getThreatSummary(result);
   const payloadLabel = getPayloadLabel(result);
   const sortedSignals = [...result.signals].sort((a, b) => severityRank(b.severity) - severityRank(a.severity));
   const topSignal = sortedSignals.find((signal) => !signal.passed && signal.severity !== "low") ?? sortedSignals[0];
   const secondarySignals = sortedSignals.filter((signal) => signal !== topSignal);
   const ruleScore = result.ruleScore ?? result.riskScore;
+  const mayOpen = canOpenScannedUrl(result);
 
   return (
     <View style={{ flex: 1, backgroundColor: theme.colors.background }}>
-      {result.verdict === "safe" ? <ConfettiCannon count={70} origin={{ x: 180, y: -20 }} fadeOut autoStart /> : null}
       <ScrollView
         style={{ flex: 1 }}
         contentContainerStyle={{
@@ -350,19 +346,19 @@ export default function ScanResultScreen() {
             minimumFontScale={0.5}
             style={{ color: verdictColor, fontSize: 46, lineHeight: 54, textAlign: "center" }}
           >
-            {verdictLabels[result.verdict]}
+            {display.label}
           </Text>
           <View className="mt-5">
             <ScoreRing score={result.riskScore} color={verdictColor} />
           </View>
-          <Text className="mt-5 text-center font-ui text-sm leading-6 text-textSecondary">{result.verdictText ?? verdictLabels[result.verdict]}</Text>
+          <Text className="mt-5 text-center font-ui text-sm leading-6 text-textSecondary">{display.summary}</Text>
           <Text
             className="mt-4 w-full text-center font-display text-sm text-accent"
             numberOfLines={1}
             adjustsFontSizeToFit
             minimumFontScale={0.72}
           >
-            Threat type: {threatSummary}
+            Finding: {threatSummary}
           </Text>
         </View>
 
@@ -379,7 +375,7 @@ export default function ScanResultScreen() {
             <Text className="font-display text-xl text-textPrimary">{Math.round(result.riskScore)} / 100</Text>
             <View className="rounded-pill px-4 py-2" style={{ backgroundColor: `${verdictColor}24` }}>
               <Text className="font-display text-xs uppercase tracking-widest" style={{ color: verdictColor }}>
-                {verdictLabels[result.verdict]}
+                {display.tone === "danger" ? "High risk" : display.tone === "safe" ? "Checks complete" : "Review"}
               </Text>
             </View>
           </View>
@@ -423,10 +419,12 @@ export default function ScanResultScreen() {
               </Text>
             </View>
             <ScoreBar
-              label="URL safety checks"
+              label={result.verificationStatus === "complete" ? "URL safety checks" : "Available risk signals"}
               score={ruleScore}
-              color={ruleScore >= 75 ? theme.colors.danger : ruleScore >= 35 ? theme.colors.warn : theme.colors.safe}
-              detail="Checks look for spoofed brands, executable payloads, wallet-drain language, injection strings, weak transport, shorteners, and suspicious URL shape."
+              color={display.tone === "safe" ? theme.colors.safe : verdictColor}
+              detail={result.verificationStatus === "complete"
+                ? "Checks look for spoofed brands, executable payloads, wallet-drain language, injection strings, weak transport, shorteners, and suspicious URL shape."
+                : "Some checks may not have completed. This score does not establish that the destination is safe."}
             />
             <ScoreBar
               label="Final score"
@@ -476,7 +474,10 @@ export default function ScanResultScreen() {
             <Button title="Block & Report" variant="danger" onPress={reportScan} />
           </View>
         </View>
-        <Button title="Continue Safely" variant="primary" onPress={continueSafely} />
+        {mayOpen ? <Button title="Open destination" variant="primary" onPress={openDestination} /> : null}
+        {!mayOpen && display.tone === "safe" ? (
+          <Text className="text-center font-ui text-sm text-textSecondary">Direct opening is unavailable. Re-scan and review the destination independently.</Text>
+        ) : null}
       </ScrollView>
     </View>
   );
