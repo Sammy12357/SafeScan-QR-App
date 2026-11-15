@@ -13,6 +13,7 @@ import { useAirdropStore } from "@/stores/airdropStore";
 import { useAuthStore } from "@/stores/authStore";
 import { useScanStore } from "@/stores/scanStore";
 import { useWallet } from "@/hooks/useWallet";
+import { tokenFeaturesEnabled } from "@/constants/tokenFeatures";
 
 function initialsFor(name?: string | null, email?: string | null) {
   const source = (name?.trim() || email?.split("@")[0] || "SafeScan").replace(/[^a-zA-Z0-9 ]/g, " ");
@@ -115,10 +116,14 @@ function BrandHeader() {
           Premium Security Build
         </Text>
         <View style={{ flexDirection: "row", alignItems: "center", gap: 7, flexShrink: 0 }}>
-          <Text style={{ color: theme.colors.textSecondary, fontFamily: theme.fonts.display, fontSize: 10.5, letterSpacing: 0.8 }}>
-            Powered By
-          </Text>
-          <SolanaMark />
+          {tokenFeaturesEnabled ? (
+            <>
+              <Text style={{ color: theme.colors.textSecondary, fontFamily: theme.fonts.display, fontSize: 10.5, letterSpacing: 0.8 }}>
+                Powered By
+              </Text>
+              <SolanaMark />
+            </>
+          ) : null}
         </View>
       </View>
       <Text
@@ -149,13 +154,27 @@ export default function ProfileScreen() {
   const [isDeleting, setIsDeleting] = useState(false);
   const [isSigningOut, setIsSigningOut] = useState(false);
   const [walletError, setWalletError] = useState<string | null>(null);
+  const [storedWalletAddress, setStoredWalletAddress] = useState<string | null>(null);
 
   // Refetch when a new backend session is seeded so post-login state replaces
   // the empty placeholder fetched during the sign-in race window.
   useEffect(() => {
-    if (!hasBackendSession) return;
+    if (!hasBackendSession || !tokenFeaturesEnabled) return;
     fetchAirdropStatus().catch(() => undefined);
   }, [fetchAirdropStatus, hasBackendSession, apiSessionVersion]);
+
+  useEffect(() => {
+    if (tokenFeaturesEnabled || !hasBackendSession) return;
+    let active = true;
+    api.wallet.status()
+      .then((wallet) => {
+        if (active) setStoredWalletAddress(wallet.connected ? wallet.walletAddress ?? null : null);
+      })
+      .catch(() => {
+        if (active) setWalletError("Could not check for an existing wallet. Try again later.");
+      });
+    return () => { active = false; };
+  }, [hasBackendSession, apiSessionVersion]);
 
   useEffect(() => {
     setAvatarUri(user?.avatarUrl ?? null);
@@ -164,7 +183,7 @@ export default function ProfileScreen() {
   const displayName = user?.name || "SafeScan user";
   const displayEmail = user?.email || "Signed in";
   const initials = useMemo(() => initialsFor(displayName, displayEmail), [displayEmail, displayName]);
-  const totalScans = airdropStatus?.totalScans ?? airdropStatus?.scanCount ?? history.length;
+  const totalScans = tokenFeaturesEnabled ? (airdropStatus?.totalScans ?? airdropStatus?.scanCount ?? history.length) : history.length;
   const tierNumber = airdropStatus?.tier ?? tiers.find((tier) => tier.name === airdropStatus?.currentTier)?.tier ?? 1;
   const tierLabel = airdropStatus?.currentTier ?? tiers.find((tier) => tier.tier === tierNumber)?.name ?? "Pending";
   const referralCount = referral?.totalReferrals ?? referral?.referrals ?? airdropStatus?.referrals ?? 0;
@@ -197,8 +216,10 @@ export default function ProfileScreen() {
   const handleDisconnectWallet = async () => {
     setWalletError(null);
     try {
+      if (!tokenFeaturesEnabled && storedWalletAddress) await api.wallet.disconnect();
       await disconnect();
-      await fetchAirdropStatus().catch(() => undefined);
+      setStoredWalletAddress(null);
+      if (tokenFeaturesEnabled) await fetchAirdropStatus().catch(() => undefined);
     } catch (error) {
       setWalletError(error instanceof Error ? error.message : "Could not disconnect Solana wallet.");
     }
@@ -272,19 +293,21 @@ export default function ProfileScreen() {
 
         <View style={{ flexDirection: "row", gap: 10 }}>
           <StatCard value={totalScans} label="Total scans" />
-          <StatCard value={tierLabel} label="Airdrop tier" />
-          <StatCard value={referralCount} label="Referrals" />
+          {tokenFeaturesEnabled ? <StatCard value={tierLabel} label="Airdrop tier" /> : null}
+          {tokenFeaturesEnabled ? <StatCard value={referralCount} label="Referrals" /> : null}
         </View>
       </View>
 
-      <Section title="Solana Wallet">
-        {isConnected && publicKey ? (
+      <Section title={tokenFeaturesEnabled ? "Solana Wallet" : "Previously linked wallet"}>
+        {(storedWalletAddress || (isConnected && publicKey)) ? (
           <View style={{ gap: 12 }}>
             <View style={{ borderRadius: 8, borderWidth: 1, borderColor: theme.colors.primaryGlow, backgroundColor: theme.colors.primaryDim, paddingHorizontal: 12, paddingVertical: 10 }}>
-              <Text style={{ color: theme.colors.primary, fontFamily: theme.fonts.mono }}>{truncateMiddle(publicKey)}</Text>
+              <Text style={{ color: theme.colors.primary, fontFamily: theme.fonts.mono }}>{truncateMiddle(storedWalletAddress || publicKey || "")}</Text>
             </View>
             <Button title="Disconnect" variant="secondary" onPress={handleDisconnectWallet} />
           </View>
+        ) : !tokenFeaturesEnabled ? (
+          <Text style={{ color: theme.colors.textSecondary, fontFamily: theme.fonts.sans }}>Token and wallet connection features are unavailable.</Text>
         ) : (
           <Button title={isConnecting ? "Connecting..." : "Connect Solana Wallet"} onPress={handleConnectWallet} disabled={isConnecting} style={{ backgroundColor: theme.colors.primaryStrong, borderColor: theme.colors.primaryStrong }} />
         )}

@@ -5,6 +5,7 @@ import { View } from "react-native";
 import Animated, { useAnimatedStyle, useSharedValue, withTiming } from "react-native-reanimated";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { theme } from "@/constants/theme";
+import { tokenFeaturesEnabled } from "@/constants/tokenFeatures";
 
 type TabIconName = "camera" | "clock" | "gift" | "bar-chart-2" | "user";
 
@@ -79,7 +80,7 @@ export default function TabsLayout() {
       }}
     >
       <Tabs.Screen name="analyze" options={{ title: "History", tabBarIcon: ({ color, focused }) => <TabIcon name="clock" color={color} focused={focused} /> }} />
-      <Tabs.Screen name="airdrop" options={{ title: "Airdrop", tabBarIcon: ({ color, focused }) => <TabIcon name="gift" color={color} focused={focused} /> }} />
+      <Tabs.Screen name="airdrop" options={{ title: "Airdrop", href: tokenFeaturesEnabled ? undefined : null, tabBarIcon: ({ color, focused }) => <TabIcon name="gift" color={color} focused={focused} /> }} />
       <Tabs.Screen name="scanner" options={{ title: "Scanner", tabBarIcon: ({ color, focused }) => <TabIcon name="camera" color={color} focused={focused} /> }} />
       <Tabs.Screen name="leaderboard" options={{ title: "Leaders", tabBarIcon: ({ color, focused }) => <TabIcon name="bar-chart-2" color={color} focused={focused} /> }} />
       <Tabs.Screen name="profile" options={{ title: "Profile", tabBarIcon: ({ color, focused }) => <TabIcon name="user" color={color} focused={focused} /> }} />

@@ -13,6 +13,7 @@ import { AdultAgeModal } from "@/components/AdultAgeModal";
 import { ToastProvider } from "@/components/shared/ToastProvider";
 import { colors } from "@/constants/theme";
 import { useAuthStore } from "@/stores/authStore";
+import { tokenFeaturesEnabled } from "@/constants/tokenFeatures";
 
 const publicRoutes = ["/auth/google", "/legal/privacy", "/legal/terms"];
 
@@ -40,7 +41,7 @@ function pathFromDeepLink(url: string) {
   const path = [parsed.hostname, parsed.path].filter(Boolean).join("/").replace(/^\/+/, "");
 
   if (path === "auth") return null;
-  if (path === "airdrop") return "/(tabs)/airdrop";
+  if (path === "airdrop") return tokenFeaturesEnabled ? "/(tabs)/airdrop" : null;
 
   const scanResultMatch = path.match(/^scan-result\/([^/?#]+)/);
   if (scanResultMatch?.[1]) return `/scan-result/${encodeURIComponent(scanResultMatch[1])}`;
