@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { canOpenScannedUrl, classifyWebVerdict, getScanVerdictDisplay, normalizeSavedVerdict } from "../utils/verdictCopy.ts";
+import { enhanceAnalyzeResult } from "../utils/localRisk.ts";
 
 const now = Date.parse("2026-11-15T12:00:00Z");
 const currentUrl = {
@@ -73,4 +74,21 @@ test("saved risk scores never downgrade an explicit dangerous verdict", () => {
   assert.equal(normalizeSavedVerdict("SAFE", 93), "danger");
   assert.equal(normalizeSavedVerdict("CAUTION", 6), "warn");
   assert.equal(normalizeSavedVerdict("SAFE", 9), "safe");
+});
+
+test("local scoring preserves a high-risk backend verdict on a familiar domain", () => {
+  const result = enhanceAnalyzeResult({
+    ...currentUrl,
+    url: "https://google.com/",
+    verdict: "danger",
+    overallRisk: "high",
+    riskScore: 95,
+    confidenceScore: 95,
+    signals: [],
+    verdictText: "High-risk backend finding"
+  });
+  assert.equal(result.verdict, "danger");
+  assert.equal(result.overallRisk, "high");
+  assert.ok(result.riskScore >= 95);
+  assert.equal(canOpenScannedUrl(result, now), false);
 });

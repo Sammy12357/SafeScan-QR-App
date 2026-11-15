@@ -302,12 +302,15 @@ export function enhanceAnalyzeResult(result: AnalyzeResult): AnalyzeResult {
   const signalScore = scoreFromSignals(backendSignals);
   const ruleScore = clampScore(Math.max(localRisk.score, signalScore));
   const backendScore = clampScore(result.riskScore ?? result.confidenceScore ?? 0);
+  const backendHighRisk = result.source === "backend" && (result.verdict === "danger" || result.overallRisk === "high");
   const finalScore =
-    trustedDomain && !hasConcreteLocalHighRisk && !hasConcreteBackendHighRisk
+    backendHighRisk
+      ? clampScore(Math.max(backendScore, ruleScore))
+      : trustedDomain && !hasConcreteLocalHighRisk && !hasConcreteBackendHighRisk
       ? clampScore(Math.max(ruleScore, Math.min(backendScore, 24)))
       : clampScore(Math.max(backendScore, ruleScore));
   const scoreVerdict = verdictFromScore(finalScore);
-  const verdict = trustedDomain && !hasConcreteLocalHighRisk && !hasConcreteBackendHighRisk ? scoreVerdict : verdictRank(result.verdict) > verdictRank(scoreVerdict) ? result.verdict : scoreVerdict;
+  const verdict = backendHighRisk ? "danger" : trustedDomain && !hasConcreteLocalHighRisk && !hasConcreteBackendHighRisk ? scoreVerdict : verdictRank(result.verdict) > verdictRank(scoreVerdict) ? result.verdict : scoreVerdict;
   const trustSignal =
     trustedDomain && ignoredBackendSignals
       ? [
