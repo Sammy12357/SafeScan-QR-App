@@ -18,10 +18,14 @@ export function ScanDrawer({ payload, onClear }: { payload: string | null; onCle
   const addScan = useScanStore((state) => state.addScan);
   const insets = useSafeAreaInsets();
   const [reported, setReported] = useState(false);
+  const [analyzedPayload, setAnalyzedPayload] = useState<string | null>(null);
+  const [actionMessage, setActionMessage] = useState("");
   const reveal = useSharedValue(28);
   const opacity = useSharedValue(0);
 
   useEffect(() => {
+    setAnalyzedPayload(null);
+    setActionMessage("");
     if (!payload) {
       reveal.value = 28;
       opacity.value = 0;
@@ -38,12 +42,17 @@ export function ScanDrawer({ payload, onClear }: { payload: string | null; onCle
 
   if (!payload) return null;
 
-  const result = analyze.data;
+  // React Query retains the last mutation result while a new QR is framed.
+  // Never attach a previous payload's verdict to the current one.
+  const result = !analyze.isPending && !analyze.isError && analyzedPayload === payload && analyze.data &&
+    (analyze.data.rawPayload === payload || analyze.data.url === payload) ? analyze.data : null;
 
   const runAnalysis = () => {
     setReported(false);
+    setActionMessage("");
     analyze.mutate(payload, {
       onSuccess: (scan) => {
+        setAnalyzedPayload(payload);
         addScan({ ...scan, id: `${Date.now()}` });
       }
     });
@@ -78,6 +87,11 @@ export function ScanDrawer({ payload, onClear }: { payload: string | null; onCle
 
         <LoadingSteps active={analyze.isPending} />
         {analyze.isPending ? <ActivityIndicator color={theme.colors.accent} /> : null}
+        {analyze.error ? (
+          <Text style={{ color: theme.colors.danger, lineHeight: 20 }}>
+            SafeScan could not verify this QR. {analyze.error instanceof Error ? analyze.error.message : "Please try again."}
+          </Text>
+        ) : null}
 
         {!result ? (
           <View style={{ gap: 10 }}>
@@ -87,19 +101,41 @@ export function ScanDrawer({ payload, onClear }: { payload: string | null; onCle
         ) : (
           <View style={{ gap: 12 }}>
             <RiskBreakdownPanel result={result} />
-            {reported ? <Text style={{ color: theme.colors.safe }}>Report queued. SafeScan will use it to improve detection.</Text> : null}
+            {reported ? <Text style={{ color: theme.colors.safe }}>Report sent.</Text> : null}
             <Button
               title="Block & Report"
               variant={result.overallRisk === "high" ? "primary" : "secondary"}
               onPress={async () => {
-                await reportUrl(result.url, "Mobile user blocked risky QR");
-                setReported(true);
+                try {
+                  await reportUrl(result.url, "Mobile user blocked risky QR");
+                  setReported(true);
+                  setActionMessage("");
+                } catch {
+                  setReported(false);
+                  setActionMessage("Could not send the report. Please try again.");
+                }
               }}
             />
             <Button title="Share Report" variant="secondary" onPress={() => shareScanReport(result)} />
-            {canOpenScannedUrl(result) ? <Button title="Open destination" variant="ghost" onPress={() => {
-              if (canOpenScannedUrl(result)) void Linking.openURL(result.url);
-            }} /> : null}
+            {canOpenScannedUrl(result) ? (
+              <Button title="Open destination" variant="ghost" onPress={async () => {
+                if (!canOpenScannedUrl(result)) return;
+                try {
+                  if (!(await Linking.canOpenURL(result.url))) {
+                    setActionMessage("This link cannot be opened on this device.");
+                    return;
+                  }
+                  if (!canOpenScannedUrl(result)) {
+                    setActionMessage("The verdict needs fresh review before this link can open.");
+                    return;
+                  }
+                  await Linking.openURL(result.url);
+                } catch {
+                  setActionMessage("Could not open this destination.");
+                }
+              }} />
+            ) : null}
+            {actionMessage ? <Text style={{ color: theme.colors.textSecondary }}>{actionMessage}</Text> : null}
             <Button title="Scan Another" variant="secondary" onPress={onClear} />
           </View>
         )}

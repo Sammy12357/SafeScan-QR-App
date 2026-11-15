@@ -1,4 +1,4 @@
-import { useMemo, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { Feather } from "@expo/vector-icons";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import * as Clipboard from "expo-clipboard";
@@ -50,7 +50,8 @@ function historyItemToAnalyzeResult(item: ScanHistoryItem): AnalyzeResult {
     scanCount: undefined,
     payloadType: undefined,
     source: "backend",
-    verificationStatus: item.verificationStatus,
+    verificationStatus: "incomplete",
+    unverifiedChecks: ["Historical verdict needs a new scan"],
     historical: true
   };
 }
@@ -195,6 +196,10 @@ export default function ScanResultScreen() {
   const localResult = useScanStore((state) => state.history.find((scan) => scan.scanId === scanId || scan.id === scanId));
   const [actionMessage, setActionMessage] = useState("");
 
+  useEffect(() => {
+    setActionMessage("");
+  }, [scanId]);
+
   const historyQuery = useQuery({
     queryKey: ["scan-history-result", scanId],
     enabled: Boolean(scanId && !cachedResult && !localResult),
@@ -206,7 +211,9 @@ export default function ScanResultScreen() {
     }
   });
 
-  const result = cachedResult ?? localResult ?? historyQuery.data;
+  // Store history is a saved observation, even when it was scanned recently.
+  // Only the live React Query result may authorize a direct open action.
+  const result = cachedResult ?? (localResult ? { ...localResult, historical: true } : undefined) ?? historyQuery.data;
   const reportText = useMemo(() => (result ? formatReport(result) : ""), [result]);
 
   const shareReport = async () => {
@@ -263,6 +270,10 @@ export default function ScanResultScreen() {
       const canOpen = await Linking.canOpenURL(result.url);
       if (!canOpen) {
         setActionMessage("No launchable URL found in this payload.");
+        return;
+      }
+      if (!canOpenScannedUrl(result)) {
+        setActionMessage("The verdict needs fresh review before this link can open.");
         return;
       }
       await Linking.openURL(result.url);
@@ -367,8 +378,19 @@ export default function ScanResultScreen() {
         </Section>
 
         <Section title="Decoded URL / Payload">
-          <Text className="font-mono text-sm leading-6 text-textPrimary">{result.url}</Text>
+          <Text className="font-mono text-sm leading-6 text-textPrimary">{result.rawPayload ?? result.url}</Text>
         </Section>
+
+        {result.verificationStatus !== "complete" || (result.unverifiedChecks?.length ?? 0) > 0 ? (
+          <Section title="Verification incomplete">
+            <Text className="font-ui text-sm leading-6 text-textSecondary">
+              Some required checks did not complete. This result does not verify that the destination is safe.
+            </Text>
+            {(result.unverifiedChecks ?? []).map((check) => (
+              <Text key={check} className="mt-2 font-ui text-sm text-textSecondary">• {check}</Text>
+            ))}
+          </Section>
+        ) : null}
 
         <Section title="Final risk score">
           <View className="flex-row items-center justify-between gap-3">
@@ -415,7 +437,7 @@ export default function ScanResultScreen() {
                 <Text className="font-mono text-[10px] text-accent">rules + signals</Text>
               </View>
               <Text className="font-ui text-sm text-textPrimary" style={{ lineHeight: 24 }}>
-                Transparent QR checks decide this score. The weak backend ML score is no longer shown or used as the primary verdict.
+                The backend verdict and local QR signals are combined conservatively. A local check cannot lower a backend risk verdict.
               </Text>
             </View>
             <ScoreBar
@@ -430,7 +452,7 @@ export default function ScanResultScreen() {
               label="Final score"
               score={result.riskScore}
               color={verdictColor}
-              detail="Generic backend warnings are reduced for trusted domains unless concrete malicious indicators are present."
+              detail="The final score keeps the highest risk found by the backend or local QR checks. Incomplete verification adds caution."
             />
           </View>
         </Section>

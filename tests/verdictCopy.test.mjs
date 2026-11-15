@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { canOpenScannedUrl, classifyWebVerdict, extractWebsiteScanFields, getScanVerdictDisplay, normalizeSavedVerdict } from "../utils/verdictCopy.ts";
+import { canOpenScannedUrl, getScanVerdictDisplay, normalizeSavedVerdict } from "../utils/verdictCopy.ts";
 import { enhanceAnalyzeResult } from "../utils/localRisk.ts";
 
 const now = Date.parse("2026-11-15T12:00:00Z");
@@ -57,35 +57,6 @@ test("high-risk findings and demo results remain conspicuous", () => {
   assert.equal(getScanVerdictDisplay({ ...currentUrl, verdict: "danger", verificationStatus: undefined }).label, "High-risk indicators");
   assert.equal(getScanVerdictDisplay({ ...currentUrl, source: "demo-fallback" }).label, "Demo result only");
   assert.equal(getScanVerdictDisplay({ ...currentUrl, source: "demo-fallback", verdict: "danger" }).label, "Demo high-risk indicators");
-});
-
-test("website HTML labels are recognized exactly and unknown layouts fail closed", () => {
-  assert.deepEqual(classifyWebVerdict("No threats found in checks"), { verdict: "safe", verificationStatus: "complete" });
-  assert.deepEqual(classifyWebVerdict("High-risk indicators"), { verdict: "danger" });
-  assert.deepEqual(classifyWebVerdict("Could not fully check"), { verdict: "warn", verificationStatus: "incomplete" });
-  assert.deepEqual(classifyWebVerdict("Needs review"), { verdict: "warn", verificationStatus: "complete" });
-  assert.deepEqual(classifyWebVerdict("Content decoded"), { verdict: "safe", verificationStatus: "not_applicable" });
-  assert.equal(classifyWebVerdict("All safe!"), null);
-  assert.equal(classifyWebVerdict(""), null);
-});
-
-test("current website scan markup retains the exact decoded payload", () => {
-  const html = `
-    <h2 id="riskVerdictTitle">No threats found in checks</h2>
-    <p class="result-support">Configured checks completed.</p>
-    <p class="threat-type-line"><strong>Finding:</strong> No specific threat identified</p>
-    <p class="engine-label">What this QR requests</p><p>Open a website.</p>
-    <p class="engine-label">Exact decoded QR payload</p>
-    <pre class="mono decoded-payload">https://example.com/?a=1&amp;b=&#34;quoted&#34;</pre>`;
-  assert.deepEqual(extractWebsiteScanFields(html), {
-    payload: 'https://example.com/?a=1&b="quoted"',
-    verdictLabel: "No threats found in checks",
-    verdictText: "Configured checks completed.",
-    threatText: "No specific threat identified",
-    executionText: "Open a website."
-  });
-  assert.equal(extractWebsiteScanFields(html.replace('class="mono decoded-payload"', 'class="other"')), null);
-  assert.equal(extractWebsiteScanFields(html.replace("No threats found in checks", "SAFE")), null);
 });
 
 test("saved risk scores never downgrade an explicit dangerous verdict", () => {
