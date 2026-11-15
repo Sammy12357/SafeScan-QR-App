@@ -119,7 +119,10 @@ export function ScanDrawer({ payload, onClear }: { payload: string | null; onCle
             <Button title="Share Report" variant="secondary" onPress={() => shareScanReport(result)} />
             {canOpenScannedUrl(result) ? (
               <Button title="Open destination" variant="ghost" onPress={async () => {
-                if (!canOpenScannedUrl(result)) return;
+                if (!canOpenScannedUrl(result)) {
+                  setActionMessage("The verdict needs fresh review before this link can open.");
+                  return;
+                }
                 try {
                   if (!(await Linking.canOpenURL(result.url))) {
                     setActionMessage("This link cannot be opened on this device.");
