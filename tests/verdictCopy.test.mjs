@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { canOpenScannedUrl, classifyWebVerdict, getScanVerdictDisplay, normalizeSavedVerdict } from "../utils/verdictCopy.ts";
+import { canOpenScannedUrl, classifyWebVerdict, extractWebsiteScanFields, getScanVerdictDisplay, normalizeSavedVerdict } from "../utils/verdictCopy.ts";
 import { enhanceAnalyzeResult } from "../utils/localRisk.ts";
 
 const now = Date.parse("2026-11-15T12:00:00Z");
@@ -69,6 +69,25 @@ test("website HTML labels are recognized exactly and unknown layouts fail closed
   assert.equal(classifyWebVerdict(""), null);
 });
 
+test("current website scan markup retains the exact decoded payload", () => {
+  const html = `
+    <h2 id="riskVerdictTitle">No threats found in checks</h2>
+    <p class="result-support">Configured checks completed.</p>
+    <p class="threat-type-line"><strong>Finding:</strong> No specific threat identified</p>
+    <p class="engine-label">What this QR requests</p><p>Open a website.</p>
+    <p class="engine-label">Exact decoded QR payload</p>
+    <pre class="mono decoded-payload">https://example.com/?a=1&amp;b=&#34;quoted&#34;</pre>`;
+  assert.deepEqual(extractWebsiteScanFields(html), {
+    payload: 'https://example.com/?a=1&b="quoted"',
+    verdictLabel: "No threats found in checks",
+    verdictText: "Configured checks completed.",
+    threatText: "No specific threat identified",
+    executionText: "Open a website."
+  });
+  assert.equal(extractWebsiteScanFields(html.replace('class="mono decoded-payload"', 'class="other"')), null);
+  assert.equal(extractWebsiteScanFields(html.replace("No threats found in checks", "SAFE")), null);
+});
+
 test("saved risk scores never downgrade an explicit dangerous verdict", () => {
   assert.equal(normalizeSavedVerdict("MALICIOUS", 3), "danger");
   assert.equal(normalizeSavedVerdict("SAFE", 93), "danger");
@@ -90,5 +109,24 @@ test("local scoring preserves a high-risk backend verdict on a familiar domain",
   assert.equal(result.verdict, "danger");
   assert.equal(result.overallRisk, "high");
   assert.ok(result.riskScore >= 95);
+  assert.equal(result.threatType, undefined);
+  assert.equal(canOpenScannedUrl(result, now), false);
+});
+
+test("local scoring preserves backend caution on a familiar domain", () => {
+  const result = enhanceAnalyzeResult({
+    ...currentUrl,
+    url: "https://google.com/",
+    verdict: "warn",
+    overallRisk: "suspicious",
+    riskScore: 62,
+    confidenceScore: 62,
+    signals: [],
+    verdictText: "Review the destination"
+  });
+  assert.equal(result.verdict, "warn");
+  assert.equal(result.overallRisk, "suspicious");
+  assert.ok(result.riskScore >= 62);
+  assert.equal(getScanVerdictDisplay(result).label, "Needs review");
   assert.equal(canOpenScannedUrl(result, now), false);
 });

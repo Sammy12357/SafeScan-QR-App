@@ -36,7 +36,7 @@ export function RiskBreakdownPanel({ result }: { result: AnalyzeResponse }) {
       {result.overallRisk === "high" ? (
         <View style={{ borderRadius: 8, borderWidth: 1, borderColor: theme.colors.risk.warningBanner.border, backgroundColor: theme.colors.risk.warningBanner.bg, padding: 13 }}>
           <Text style={{ color: theme.colors.risk.warningBanner.text, fontFamily: theme.fonts.sansSemiBold, lineHeight: 20 }}>
-            Caution: this QR code shows strong indicators of a phishing or wallet drain attack.
+            Caution: this QR code shows high-risk indicators. Review the finding before taking action.
           </Text>
         </View>
       ) : null}

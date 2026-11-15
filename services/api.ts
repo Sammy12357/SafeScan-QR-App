@@ -35,7 +35,7 @@ import {
   type WalletStatusResponse
 } from "@/utils/schemas";
 import { enhanceAnalyzeResult } from "@/utils/localRisk";
-import { classifyWebVerdict } from "@/utils/verdictCopy";
+import { classifyWebVerdict, extractWebsiteScanFields } from "@/utils/verdictCopy";
 import { useAdultChallengeStore } from "@/stores/adultChallengeStore";
 
 const AUTH_TOKEN_KEY = "auth_token";
@@ -246,11 +246,6 @@ function createUploadForm(file: { uri: string; name: string; mimeType: string })
   return form;
 }
 
-function textBetween(html: string, pattern: RegExp) {
-  const match = html.match(pattern);
-  return match?.[1] ? decodeHtml(match[1].replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim()) : "";
-}
-
 function decodeHtml(value: string) {
   return value
     .replace(/&amp;/g, "&")
@@ -276,11 +271,9 @@ function severityFromWeb(value: string): Signal["severity"] {
 }
 
 function parseWebScanResult(html: string): AnalyzeResult {
-  const verdictText = textBetween(html, /<p class="result-support">([\s\S]*?)<\/p>/i);
-  const threatText = textBetween(html, /<p class="threat-type-line">[\s\S]*?<strong>Threat type:<\/strong>\s*([\s\S]*?)<\/p>/i);
-  const executionText = textBetween(html, /<p class="engine-label">What this QR executes<\/p>\s*<p>([\s\S]*?)<\/p>/i);
-  const payload = textBetween(html, /<p class="engine-label">Decoded URL \/ payload<\/p>\s*<p class="mono">([\s\S]*?)<\/p>/i);
-  const verdictLabel = textBetween(html, /<h2 id="riskVerdictTitle">([\s\S]*?)<\/h2>/i) || textBetween(html, /<h2>Verdict:\s*([\s\S]*?)<\/h2>/i);
+  const fields = extractWebsiteScanFields(html);
+  if (!fields) throw new SafeScanApiError(422, { error: "Could not read the website scan result. Please scan again." });
+  const { verdictText, threatText, executionText, payload, verdictLabel } = fields;
   const scoreMatch = html.match(/data-score="(\d+)"/i) ?? html.match(/<h3>(\d+)\s*\/\s*100<\/h3>/i);
   const score = scoreMatch?.[1] ? Number(scoreMatch[1]) : 0;
   const signals: Signal[] = [];
@@ -303,7 +296,14 @@ function parseWebScanResult(html: string): AnalyzeResult {
 
   const { verdict, verificationStatus } = verdictFromWeb(verdictLabel);
   const analyzedAt = new Date().toISOString();
-  const normalizedPayload = payload || "Uploaded QR payload";
+  const normalizedPayload = payload;
+  let payloadType = "text";
+  try {
+    const parsed = new URL(payload);
+    if ((parsed.protocol === "https:" || parsed.protocol === "http:") && payload === payload.trim() && !/\s/.test(payload)) payloadType = "url";
+  } catch {
+    // Non-web QR actions stay as decoded text.
+  }
 
   return enhanceAnalyzeResult({
     scanId: `web-upload:${Date.now()}`,
@@ -330,7 +330,7 @@ function parseWebScanResult(html: string): AnalyzeResult {
     scannedAt: analyzedAt,
     counted: undefined,
     scanCount: undefined,
-    payloadType: payload ? "url" : "file",
+    payloadType,
     source: "backend",
     verificationStatus,
     threatType: threatText || undefined
