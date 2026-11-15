@@ -1,6 +1,6 @@
 import * as SecureStore from "expo-secure-store";
 import { create } from "zustand";
-import { api, clearApiTokens, SafeScanApiError, setApiTokens, type AgeChallenge, type User } from "@/services/api";
+import { api, clearApiTokens, SafeScanApiError, setApiTokens, type AgeChallenge, type TermsChallenge, type User } from "@/services/api";
 import { roleForEmail } from "@/constants/config";
 import { useAdultChallengeStore } from "@/stores/adultChallengeStore";
 
@@ -16,13 +16,15 @@ type AuthState = {
   apiSessionVersion: number;
   hasBackendSession: boolean;
   ageChallenge: AgeChallenge | null;
+  termsChallenge: TermsChallenge | null;
   isLoading: boolean;
   error: string | null;
 };
 
 type AuthStore = AuthState & {
   exchangeAuth0IdToken: (idToken: string) => Promise<void>;
-  completeAgeChallenge: (birthYear: number, birthdayThisYear: "yes" | "no") => Promise<void>;
+  completeAgeChallenge: (birthYear: number, birthdayThisYear: "yes" | "no", legalConsent: boolean) => Promise<void>;
+  completeTermsChallenge: (legalConsent: boolean) => Promise<void>;
   continueAsDemoUser: () => void;
   logout: () => Promise<void>;
   hydrateFromStorage: () => Promise<void>;
@@ -38,6 +40,7 @@ const initialState: AuthState = {
   apiSessionVersion: 0,
   hasBackendSession: false,
   ageChallenge: null,
+  termsChallenge: null,
   isLoading: true,
   error: null
 };
@@ -72,6 +75,7 @@ export const useAuthStore = create<AuthStore>((set, get) => ({
       isAuthenticated: true,
       hasBackendSession: false,
       ageChallenge: null,
+      termsChallenge: null,
       isLoading: false,
       error: null
     });
@@ -87,6 +91,20 @@ export const useAuthStore = create<AuthStore>((set, get) => ({
           isAuthenticated: false,
           hasBackendSession: false,
           ageChallenge: result,
+          termsChallenge: null,
+          isLoading: false,
+          error: null
+        });
+        return;
+      }
+      if ("termsAcceptanceRequired" in result) {
+        await clearStoredSession();
+        set({
+          user: null,
+          isAuthenticated: false,
+          hasBackendSession: false,
+          ageChallenge: null,
+          termsChallenge: result,
           isLoading: false,
           error: null
         });
@@ -104,6 +122,7 @@ export const useAuthStore = create<AuthStore>((set, get) => ({
         isAuthenticated: true,
         hasBackendSession: true,
         ageChallenge: null,
+        termsChallenge: null,
         apiSessionVersion: state.apiSessionVersion + 1,
         isLoading: false,
         error: null
@@ -111,16 +130,22 @@ export const useAuthStore = create<AuthStore>((set, get) => ({
     } catch (error) {
       const message = error instanceof Error ? error.message : "SafeScan backend rejected the Auth0 token.";
       await clearStoredSession();
-      set({ user: null, isAuthenticated: false, hasBackendSession: false, ageChallenge: null, isLoading: false, error: message });
+      set({ user: null, isAuthenticated: false, hasBackendSession: false, ageChallenge: null, termsChallenge: null, isLoading: false, error: message });
       throw error;
     }
   },
-  completeAgeChallenge: async (birthYear, birthdayThisYear) => {
+  completeAgeChallenge: async (birthYear, birthdayThisYear, legalConsent) => {
     const challenge = get().ageChallenge;
     if (!challenge) throw new Error("Start sign-in again to confirm your age.");
+    const agreement = challenge.termsVersion && challenge.privacyVersion
+      ? { termsVersion: challenge.termsVersion, privacyVersion: challenge.privacyVersion }
+      : undefined;
+    if (Boolean(challenge.termsVersion) !== Boolean(challenge.privacyVersion) || (agreement && !legalConsent)) {
+      throw new Error("Review and agree to the current Terms and Privacy Policy.");
+    }
     set({ isLoading: true, error: null });
     try {
-      const result = await api.auth.confirmAge(challenge.ageTicket, birthYear, birthdayThisYear);
+      const result = await api.auth.confirmAge(challenge.ageTicket, birthYear, birthdayThisYear, agreement);
       await Promise.all([
         SecureStore.setItemAsync(AUTH_TOKEN_KEY, result.accessToken),
         SecureStore.setItemAsync(REFRESH_TOKEN_KEY, result.refreshToken)
@@ -132,6 +157,7 @@ export const useAuthStore = create<AuthStore>((set, get) => ({
         isAuthenticated: true,
         hasBackendSession: true,
         ageChallenge: null,
+        termsChallenge: null,
         apiSessionVersion: state.apiSessionVersion + 1,
         isLoading: false,
         error: null
@@ -139,9 +165,41 @@ export const useAuthStore = create<AuthStore>((set, get) => ({
     } catch (error) {
       const status = error instanceof SafeScanApiError ? error.status : 0;
       if (status === 403 || status === 409 || status === 410) {
-        set({ ageChallenge: null, isLoading: false, error: "Age confirmation could not be completed. Start sign-in again later." });
+        set({ ageChallenge: null, termsChallenge: null, isLoading: false, error: "Age confirmation could not be completed. Start sign-in again later." });
       } else {
         set({ isLoading: false, error: error instanceof Error ? error.message : "Age confirmation failed. Try again." });
+      }
+      throw error;
+    }
+  },
+  completeTermsChallenge: async (legalConsent) => {
+    const challenge = get().termsChallenge;
+    if (!challenge || !legalConsent) throw new Error("Review and agree to the current Terms and Privacy Policy.");
+    set({ isLoading: true, error: null });
+    try {
+      const result = await api.auth.acceptTerms(challenge.termsTicket, challenge.termsVersion, challenge.privacyVersion);
+      await Promise.all([
+        SecureStore.setItemAsync(AUTH_TOKEN_KEY, result.accessToken),
+        SecureStore.setItemAsync(REFRESH_TOKEN_KEY, result.refreshToken)
+      ]);
+      setApiTokens({ accessToken: result.accessToken, refreshToken: result.refreshToken });
+      set((state) => ({
+        user: normalizeUser(result.user),
+        walletAddress: null,
+        isAuthenticated: true,
+        hasBackendSession: true,
+        ageChallenge: null,
+        termsChallenge: null,
+        apiSessionVersion: state.apiSessionVersion + 1,
+        isLoading: false,
+        error: null
+      }));
+    } catch (error) {
+      const status = error instanceof SafeScanApiError ? error.status : 0;
+      if (status === 409 || status === 410) {
+        set({ termsChallenge: null, isLoading: false, error: "Agreement confirmation expired. Start sign-in again." });
+      } else {
+        set({ isLoading: false, error: error instanceof Error ? error.message : "Agreement confirmation failed. Try again." });
       }
       throw error;
     }

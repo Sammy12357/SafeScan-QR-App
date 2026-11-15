@@ -265,6 +265,16 @@ export const AgeChallengeSchema = z.object({
   ageConfirmationRequired: z.literal(true),
   ageTicket: z.string().min(16),
   minimumAge: z.number().int().min(1).max(120),
+  expiresInSeconds: z.number().int().positive(),
+  termsVersion: z.string().min(1).optional(),
+  privacyVersion: z.string().min(1).optional()
+});
+
+export const TermsChallengeSchema = z.object({
+  termsAcceptanceRequired: z.literal(true),
+  termsTicket: z.string().min(16),
+  termsVersion: z.string().min(1),
+  privacyVersion: z.string().min(1),
   expiresInSeconds: z.number().int().positive()
 });
 
@@ -316,6 +326,7 @@ export type UserProfileResponse = UserProfile;
 export type WalletConnectResponse = z.infer<typeof WalletConnectResponseSchema>;
 export type AuthResponse = z.infer<typeof AuthResponseSchema>;
 export type AgeChallenge = z.infer<typeof AgeChallengeSchema>;
+export type TermsChallenge = z.infer<typeof TermsChallengeSchema>;
 export type TokenPair = z.infer<typeof TokenPairSchema>;
 export type WalletStatus = z.infer<typeof WalletStatusSchema>;
 export type WalletStatusResponse = WalletStatus;

@@ -4,6 +4,7 @@ import {
   AnalyzeResultSchema,
   AuthResponseSchema,
   AgeChallengeSchema,
+  TermsChallengeSchema,
   EmptyResponseSchema,
   ReferralStatsSchema,
   ReportResponseSchema,
@@ -20,6 +21,7 @@ import {
   type AnalyzeResult,
   type AuthResponse,
   type AgeChallenge,
+  type TermsChallenge,
   type ReferralResponse,
   type ReferralStats,
   type ScanHistoryItem,
@@ -45,6 +47,7 @@ let refreshTokenValue: string | null = null;
 const endpoints = {
   authVerify: "/auth/verify",
   authConfirmAge: "/auth/confirm-age/mobile",
+  authAcceptTerms: "/auth/accept-terms/mobile",
   authConfirmAdult: "/auth/confirm-adult/mobile",
   authRefresh: "/auth/refresh",
   authLogout: "/auth/logout",
@@ -93,6 +96,7 @@ export type {
   AnalyzeResult,
   AuthResponse,
   AgeChallenge,
+  TermsChallenge,
   ReferralResponse,
   ReferralStats,
   ScanHistoryItem,
@@ -359,16 +363,29 @@ export const api = {
       });
       const challenge = AgeChallengeSchema.safeParse(body);
       if (challenge.success) return challenge.data;
+      const termsChallenge = TermsChallengeSchema.safeParse(body);
+      if (termsChallenge.success) return termsChallenge.data;
       const result = parseResponse(AuthResponseSchema, body);
       setApiTokens(result);
       return result;
     },
-    async confirmAge(ageTicket: string, birthYear: number, birthdayThisYear: "yes" | "no") {
+    async confirmAge(ageTicket: string, birthYear: number, birthdayThisYear: "yes" | "no", agreement?: { termsVersion: string; privacyVersion: string }) {
       const body = await request(endpoints.authConfirmAge, {
         method: "POST",
         auth: false,
         retry: false,
-        body: JSON.stringify({ ageTicket, birthYear, birthdayThisYear })
+        body: JSON.stringify({ ageTicket, birthYear, birthdayThisYear, ...(agreement ? { legalConsent: true, ...agreement } : {}) })
+      });
+      const result = parseResponse(AuthResponseSchema, body);
+      setApiTokens(result);
+      return result;
+    },
+    async acceptTerms(termsTicket: string, termsVersion: string, privacyVersion: string) {
+      const body = await request(endpoints.authAcceptTerms, {
+        method: "POST",
+        auth: false,
+        retry: false,
+        body: JSON.stringify({ termsTicket, legalConsent: true, termsVersion, privacyVersion })
       });
       const result = parseResponse(AuthResponseSchema, body);
       setApiTokens(result);
@@ -575,8 +592,8 @@ export async function analyzeUrl(payload: string): Promise<AnalyzeResponse> {
 
 export async function verifyGoogleToken(token: string) {
   const result = await api.auth.verifyToken(token);
-  if ("ageConfirmationRequired" in result) {
-    throw new SafeScanApiError(202, { error: "Age confirmation is required before sign-in." });
+  if ("ageConfirmationRequired" in result || "termsAcceptanceRequired" in result) {
+    throw new SafeScanApiError(202, { error: "Account confirmation is required before sign-in." });
   }
   return { session: result.accessToken, user: result.user };
 }
