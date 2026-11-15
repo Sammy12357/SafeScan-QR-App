@@ -6,6 +6,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Button } from "@/components/ui/Button";
 import { theme } from "@/constants/theme";
 import { handlePhantomWalletCallback } from "@/hooks/useWallet";
+import { tokenFeaturesEnabled } from "@/constants/tokenFeatures";
 
 function paramsToQuery(params: Record<string, string | string[]>) {
   const query = new URLSearchParams();
@@ -20,6 +21,17 @@ function paramsToQuery(params: Record<string, string | string[]>) {
 }
 
 export default function PhantomWalletCallbackScreen() {
+  if (!tokenFeaturesEnabled) {
+    return (
+      <View style={{ flex: 1, justifyContent: "center", backgroundColor: theme.colors.background, padding: 24 }}>
+        <Text style={{ color: theme.colors.textPrimary, fontFamily: theme.fonts.display, fontSize: 22 }}>Wallet connection unavailable</Text>
+      </View>
+    );
+  }
+  return <ActivePhantomWalletCallbackScreen />;
+}
+
+function ActivePhantomWalletCallbackScreen() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
   const params = useLocalSearchParams<Record<string, string | string[]>>();

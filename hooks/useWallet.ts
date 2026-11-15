@@ -6,6 +6,7 @@ import * as SecureStore from "expo-secure-store";
 import nacl from "tweetnacl";
 import { api } from "@/services/api";
 import { useAuthStore } from "@/stores/authStore";
+import { tokenFeaturesEnabled } from "@/constants/tokenFeatures";
 
 // `bs58` ships without TypeScript types.
 // eslint-disable-next-line @typescript-eslint/no-var-requires
@@ -186,6 +187,11 @@ async function openPhantomSignMessage(pending: PendingFlow, session: string, wal
 
 export async function handlePhantomWalletCallback(url: string) {
   if (!url.includes(CALLBACK_PATH)) return "ignored" as const;
+  if (!tokenFeaturesEnabled) {
+    const error = new Error("Token and wallet connection features are unavailable.");
+    finishPending(error);
+    throw error;
+  }
 
   if (processedCallbackUrls.has(url)) {
     const pending = await getPendingFlow();
@@ -272,6 +278,7 @@ export function useWallet() {
   }, []);
 
   const connect = useCallback(async () => {
+    if (!tokenFeaturesEnabled) throw new Error("Token and wallet connection features are unavailable.");
     if (!isAuthenticated || userId === "demo-user") {
       throw new Error("Sign in with Google before connecting a Solana wallet.");
     }

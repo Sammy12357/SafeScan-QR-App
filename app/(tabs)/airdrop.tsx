@@ -13,6 +13,7 @@ import { useAirdropStore } from "@/stores/airdropStore";
 import { useAuthStore } from "@/stores/authStore";
 import { useWallet } from "@/hooks/useWallet";
 import { truncateMiddle } from "@/utils/url";
+import { tokenFeaturesEnabled } from "@/constants/tokenFeatures";
 
 function ProgressBar({ progress }: { progress: number }) {
   const width = useSharedValue(0);
@@ -97,6 +98,20 @@ function TierDetailCard({
 }
 
 export default function AirdropScreen() {
+  if (!tokenFeaturesEnabled) {
+    return (
+      <View style={{ flex: 1, justifyContent: "center", backgroundColor: theme.colors.background, padding: 24, gap: 12 }}>
+        <Text style={{ color: theme.colors.textPrimary, fontFamily: theme.fonts.display, fontSize: 24 }}>Token features unavailable</Text>
+        <Text style={{ color: theme.colors.textSecondary, fontFamily: theme.fonts.sans, lineHeight: 22 }}>
+          Airdrop eligibility, referrals, and wallet connection are unavailable. You can disconnect a previously linked wallet from Profile.
+        </Text>
+      </View>
+    );
+  }
+  return <ActiveAirdropScreen />;
+}
+
+function ActiveAirdropScreen() {
   const insets = useSafeAreaInsets();
   const { showToast } = useToast();
   const { status, referral, isLoading, error, fetchStatus } = useAirdropStore();
