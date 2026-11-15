@@ -1,11 +1,47 @@
 import { useEffect, useState } from "react";
 import { AntDesign } from "@expo/vector-icons";
-import { ActivityIndicator, Image, Pressable, ScrollView, Text, TextInput, View } from "react-native";
+import { ActivityIndicator, Image, Linking, Pressable, ScrollView, Text, TextInput, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useRouter } from "expo-router";
 import { theme } from "@/constants/theme";
 import { useGoogleAuth } from "@/hooks/useGoogleAuth";
 import { useAuthStore } from "@/stores/authStore";
+
+function AgreementControls({ termsVersion, privacyVersion, checked, onChange }: {
+  termsVersion: string;
+  privacyVersion: string;
+  checked: boolean;
+  onChange: (checked: boolean) => void;
+}) {
+  const openDocument = (document: "terms" | "privacy", version: string) => {
+    void Linking.openURL(`https://sqafe.com/legal/documents/${document}/${encodeURIComponent(version)}`);
+  };
+  return (
+    <View style={{ gap: 10 }}>
+      <Text style={{ color: theme.colors.textSecondary, lineHeight: 21 }}>
+        Review the current documents before continuing:
+      </Text>
+      <View style={{ flexDirection: "row", gap: 18, flexWrap: "wrap" }}>
+        <Pressable accessibilityRole="link" onPress={() => openDocument("terms", termsVersion)}>
+          <Text style={{ color: theme.colors.accent, textDecorationLine: "underline" }}>Terms of Use ({termsVersion})</Text>
+        </Pressable>
+        <Pressable accessibilityRole="link" onPress={() => openDocument("privacy", privacyVersion)}>
+          <Text style={{ color: theme.colors.accent, textDecorationLine: "underline" }}>Privacy Policy ({privacyVersion})</Text>
+        </Pressable>
+      </View>
+      <Pressable
+        accessibilityRole="checkbox"
+        accessibilityState={{ checked }}
+        accessibilityLabel="I agree to the Terms of Use and Privacy Policy"
+        onPress={() => onChange(!checked)}
+        style={{ flexDirection: "row", gap: 10, alignItems: "center", minHeight: 48 }}
+      >
+        <Text style={{ color: theme.colors.accent, fontSize: 20 }}>{checked ? "☑" : "☐"}</Text>
+        <Text style={{ color: theme.colors.textPrimary, flex: 1, lineHeight: 20 }}>I agree to the Terms of Use and Privacy Policy.</Text>
+      </Pressable>
+    </View>
+  );
+}
 
 export default function GoogleAuthScreen() {
   const insets = useSafeAreaInsets();
@@ -14,6 +50,7 @@ export default function GoogleAuthScreen() {
   const isAuthenticated = useAuthStore((state) => state.isAuthenticated);
   const [birthYear, setBirthYear] = useState("");
   const [birthdayThisYear, setBirthdayThisYear] = useState<"yes" | "no" | null>(null);
+  const [legalConsent, setLegalConsent] = useState(false);
 
   // Belt-and-suspenders: whenever the store flips to authenticated (whether
   // from Google sign-in, demo, or any other path) navigate into the app.
@@ -22,9 +59,11 @@ export default function GoogleAuthScreen() {
       router.replace("/(tabs)/scanner");
     }
   }, [isAuthenticated, router]);
-  const { signIn, confirmAge, ageChallenge, isLoading, error } = useGoogleAuth();
+  const { signIn, confirmAge, confirmTerms, ageChallenge, termsChallenge, isLoading, error } = useGoogleAuth();
+  useEffect(() => setLegalConsent(false), [ageChallenge?.ageTicket, termsChallenge?.termsTicket]);
   const parsedBirthYear = Number(birthYear);
-  const canConfirmAge = /^\d{4}$/.test(birthYear) && parsedBirthYear >= 1900 && parsedBirthYear <= new Date().getFullYear() && birthdayThisYear !== null;
+  const agreementRequired = Boolean(ageChallenge?.termsVersion && ageChallenge.privacyVersion);
+  const canConfirmAge = /^\d{4}$/.test(birthYear) && parsedBirthYear >= 1900 && parsedBirthYear <= new Date().getFullYear() && birthdayThisYear !== null && (!agreementRequired || legalConsent);
 
   return (
     <ScrollView
@@ -49,7 +88,7 @@ export default function GoogleAuthScreen() {
             SAFESCAN QR
           </Text>
           <Text style={{ color: theme.colors.textPrimary, fontSize: 30, fontFamily: theme.fonts.display, textAlign: "center" }}>
-            {ageChallenge ? "Confirm your age" : "Continue to SafeScan"}
+            {ageChallenge ? "Confirm your age" : termsChallenge ? "Review account terms" : "Continue to SafeScan"}
           </Text>
         </View>
       </View>
@@ -90,6 +129,9 @@ export default function GoogleAuthScreen() {
                 ))}
               </View>
             </View>
+            {ageChallenge.termsVersion && ageChallenge.privacyVersion ? (
+              <AgreementControls termsVersion={ageChallenge.termsVersion} privacyVersion={ageChallenge.privacyVersion} checked={legalConsent} onChange={setLegalConsent} />
+            ) : null}
             <Pressable
               accessibilityRole="button"
               disabled={!canConfirmAge || isLoading}
@@ -99,12 +141,31 @@ export default function GoogleAuthScreen() {
                   const year = parsedBirthYear;
                   setBirthYear("");
                   setBirthdayThisYear(null);
-                  void confirmAge(year, answer);
+                  void confirmAge(year, answer, legalConsent);
                 }
               }}
               style={{ minHeight: 52, borderRadius: 8, backgroundColor: theme.colors.accent, alignItems: "center", justifyContent: "center", opacity: canConfirmAge && !isLoading ? 1 : 0.5 }}
             >
               <Text style={{ color: "#000", fontFamily: theme.fonts.display, fontSize: 15 }}>Continue</Text>
+            </Pressable>
+            <Pressable accessibilityRole="button" onPress={continueAsDemoUser} style={{ minHeight: 44, alignItems: "center", justifyContent: "center" }}>
+              <Text style={{ color: theme.colors.textSecondary }}>Continue in demo mode without an account</Text>
+            </Pressable>
+          </View>
+        ) : termsChallenge ? (
+          <View style={{ gap: 14 }}>
+            <Text style={{ color: theme.colors.textSecondary, lineHeight: 21, textAlign: "center" }}>
+              SafeScan updated its account documents. Review and agree to the current versions to continue signing in.
+            </Text>
+            <AgreementControls termsVersion={termsChallenge.termsVersion} privacyVersion={termsChallenge.privacyVersion} checked={legalConsent} onChange={setLegalConsent} />
+            <Pressable
+              accessibilityRole="button"
+              accessibilityState={{ disabled: !legalConsent || isLoading }}
+              disabled={!legalConsent || isLoading}
+              onPress={() => void confirmTerms(legalConsent)}
+              style={{ minHeight: 52, borderRadius: 8, backgroundColor: theme.colors.accent, alignItems: "center", justifyContent: "center", opacity: legalConsent && !isLoading ? 1 : 0.5 }}
+            >
+              <Text style={{ color: "#000", fontFamily: theme.fonts.display, fontSize: 15 }}>Agree and continue</Text>
             </Pressable>
             <Pressable accessibilityRole="button" onPress={continueAsDemoUser} style={{ minHeight: 44, alignItems: "center", justifyContent: "center" }}>
               <Text style={{ color: theme.colors.textSecondary }}>Continue in demo mode without an account</Text>

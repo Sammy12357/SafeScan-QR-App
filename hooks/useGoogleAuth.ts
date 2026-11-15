@@ -49,7 +49,9 @@ function getAuthRedirectUri() {
 export function useGoogleAuth() {
   const exchangeAuth0IdToken = useAuthStore((state) => state.exchangeAuth0IdToken);
   const completeAgeChallenge = useAuthStore((state) => state.completeAgeChallenge);
+  const completeTermsChallenge = useAuthStore((state) => state.completeTermsChallenge);
   const ageChallenge = useAuthStore((state) => state.ageChallenge);
+  const termsChallenge = useAuthStore((state) => state.termsChallenge);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -94,11 +96,11 @@ export function useGoogleAuth() {
     }
   }, [exchangeAuth0IdToken]);
 
-  const confirmAge = useCallback(async (birthYear: number, birthdayThisYear: "yes" | "no") => {
+  const confirmAge = useCallback(async (birthYear: number, birthdayThisYear: "yes" | "no", legalConsent: boolean) => {
     setError(null);
     setIsLoading(true);
     try {
-      await completeAgeChallenge(birthYear, birthdayThisYear);
+      await completeAgeChallenge(birthYear, birthdayThisYear, legalConsent);
     } catch (e) {
       if (e instanceof SafeScanApiError && e.status === 403) {
         setError("SafeScan account sign-in is unavailable for this age. You can use the public scanner without an account.");
@@ -112,10 +114,28 @@ export function useGoogleAuth() {
     }
   }, [completeAgeChallenge]);
 
+  const confirmTerms = useCallback(async (legalConsent: boolean) => {
+    setError(null);
+    setIsLoading(true);
+    try {
+      await completeTermsChallenge(legalConsent);
+    } catch (e) {
+      if (e instanceof SafeScanApiError && (e.status === 409 || e.status === 410)) {
+        setError("This agreement check expired. Start sign-in again.");
+      } else {
+        setError("Agreement confirmation could not finish. Check your connection and try again.");
+      }
+    } finally {
+      setIsLoading(false);
+    }
+  }, [completeTermsChallenge]);
+
   return {
     signIn,
     confirmAge,
+    confirmTerms,
     ageChallenge,
+    termsChallenge,
     isLoading,
     error,
   };
