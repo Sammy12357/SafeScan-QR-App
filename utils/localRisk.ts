@@ -302,12 +302,22 @@ export function enhanceAnalyzeResult(result: AnalyzeResult): AnalyzeResult {
   const signalScore = scoreFromSignals(backendSignals);
   const ruleScore = clampScore(Math.max(localRisk.score, signalScore));
   const backendScore = clampScore(result.riskScore ?? result.confidenceScore ?? 0);
+  const backendHighRisk = result.source === "backend" && (result.verdict === "danger" || result.overallRisk === "high");
+  const backendCaution = result.source === "backend" && (result.verdict === "warn" || result.overallRisk === "suspicious");
   const finalScore =
-    trustedDomain && !hasConcreteLocalHighRisk && !hasConcreteBackendHighRisk
+    backendHighRisk || backendCaution
+      ? clampScore(Math.max(backendScore, ruleScore))
+      : trustedDomain && !hasConcreteLocalHighRisk && !hasConcreteBackendHighRisk
       ? clampScore(Math.max(ruleScore, Math.min(backendScore, 24)))
       : clampScore(Math.max(backendScore, ruleScore));
   const scoreVerdict = verdictFromScore(finalScore);
-  const verdict = trustedDomain && !hasConcreteLocalHighRisk && !hasConcreteBackendHighRisk ? scoreVerdict : verdictRank(result.verdict) > verdictRank(scoreVerdict) ? result.verdict : scoreVerdict;
+  const verdict = backendHighRisk
+    ? "danger"
+    : backendCaution
+      ? (scoreVerdict === "danger" ? "danger" : "warn")
+      : trustedDomain && !hasConcreteLocalHighRisk && !hasConcreteBackendHighRisk
+        ? scoreVerdict
+        : verdictRank(result.verdict) > verdictRank(scoreVerdict) ? result.verdict : scoreVerdict;
   const trustSignal =
     trustedDomain && ignoredBackendSignals
       ? [
@@ -338,7 +348,7 @@ export function enhanceAnalyzeResult(result: AnalyzeResult): AnalyzeResult {
     overallRisk: legacyRiskFromVerdict(verdict),
     signals,
     ruleScore,
-    threatType: result.threatType ?? localRisk.threatType
+    threatType: result.threatType ?? (backendHighRisk || backendCaution ? undefined : localRisk.threatType)
   };
 }
 

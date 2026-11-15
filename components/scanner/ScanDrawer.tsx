@@ -11,6 +11,7 @@ import { reportUrl } from "@/services/api";
 import { useScanStore } from "@/stores/scanStore";
 import { shareScanReport } from "@/utils/sharing";
 import { truncateMiddle } from "@/utils/url";
+import { canOpenScannedUrl } from "@/utils/verdictCopy";
 
 export function ScanDrawer({ payload, onClear }: { payload: string | null; onClear: () => void }) {
   const analyze = useAnalyze();
@@ -96,7 +97,9 @@ export function ScanDrawer({ payload, onClear }: { payload: string | null; onCle
               }}
             />
             <Button title="Share Report" variant="secondary" onPress={() => shareScanReport(result)} />
-            <Button title="Continue Safely" variant="ghost" onPress={() => Linking.openURL(result.url)} />
+            {canOpenScannedUrl(result) ? <Button title="Open destination" variant="ghost" onPress={() => {
+              if (canOpenScannedUrl(result)) void Linking.openURL(result.url);
+            }} /> : null}
             <Button title="Scan Another" variant="secondary" onPress={onClear} />
           </View>
         )}

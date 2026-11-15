@@ -10,6 +10,7 @@
     "android": "expo run:android",
     "lint": "expo lint",
     "typecheck": "tsc --noEmit",
+    "test:verdict-copy": "node --experimental-strip-types --test tests/verdictCopy.test.mjs",
     "test": "jest",
     "ios": "expo run:ios"
   },

@@ -11,11 +11,12 @@ import { api, type AnalyzeResult, type ScanHistoryItem } from "@/services/api";
 import { useAuthStore } from "@/stores/authStore";
 import { useScanStore, type ScanRecord } from "@/stores/scanStore";
 import { truncateMiddle } from "@/utils/url";
+import { getScanVerdictDisplay, normalizeSavedVerdict, type VerificationStatus } from "@/utils/verdictCopy";
 
-const verdictStyles: Record<string, { badge: string; text: string; label: string }> = {
-  safe: { badge: "border-risk-safe-border bg-risk-safe-bg", text: "text-risk-safe-text", label: "SAFE" },
-  warn: { badge: "border-risk-warn-border bg-risk-warn-bg", text: "text-risk-warn-text", label: "WARN" },
-  danger: { badge: "border-risk-danger-border bg-risk-danger-bg", text: "text-risk-danger-text", label: "DANGER" }
+const verdictStyles: Record<string, { badge: string; text: string }> = {
+  safe: { badge: "border-risk-safe-border bg-risk-safe-bg", text: "text-risk-safe-text" },
+  warn: { badge: "border-risk-warn-border bg-risk-warn-bg", text: "text-risk-warn-text" },
+  danger: { badge: "border-risk-danger-border bg-risk-danger-bg", text: "text-risk-danger-text" }
 };
 
 type HistoryEntry = {
@@ -28,28 +29,23 @@ type HistoryEntry = {
   analyzedAt: string;
   scannedAt: string;
   source: AnalyzeResult["source"];
+  verificationStatus?: VerificationStatus;
 };
 
-function normalizeVerdict(verdict: string | undefined, riskScore: number): AnalyzeResult["verdict"] {
-  if (verdict === "safe" || verdict === "warn" || verdict === "danger") return verdict;
-  if (riskScore >= 80) return "danger";
-  if (riskScore >= 40) return "warn";
-  return "safe";
-}
-
 function historyItemToEntry(item: ScanHistoryItem): HistoryEntry {
-  const verdict = normalizeVerdict(item.verdict, item.riskScore);
+  const verdict = normalizeSavedVerdict(item.verdict, item.riskScore);
 
   return {
     scanId: item.scanId,
     url: item.url,
     riskScore: item.riskScore,
     verdict,
-    verdictText: verdictStyles[verdict].label,
+    verdictText: undefined,
     signals: item.signals,
     analyzedAt: item.analyzedAt,
     scannedAt: item.scannedAt,
-    source: "backend"
+    source: "backend",
+    verificationStatus: item.verificationStatus
   };
 }
 
@@ -63,7 +59,8 @@ function scanRecordToEntry(scan: ScanRecord): HistoryEntry {
     signals: scan.signals,
     analyzedAt: scan.analyzedAt,
     scannedAt: scan.scannedAt,
-    source: scan.source
+    source: scan.source,
+    verificationStatus: scan.verificationStatus
   };
 }
 
@@ -73,7 +70,7 @@ function historyEntryToAnalyzeResult(item: HistoryEntry): AnalyzeResult {
     url: item.url,
     riskScore: item.riskScore,
     verdict: item.verdict,
-    verdictText: item.verdictText ?? verdictStyles[item.verdict].label,
+    verdictText: item.verdictText ?? "",
     signals: item.signals,
     analyzedAt: item.analyzedAt,
     overallRisk: item.verdict === "danger" ? "high" : item.verdict === "warn" ? "suspicious" : "safe",
@@ -82,7 +79,9 @@ function historyEntryToAnalyzeResult(item: HistoryEntry): AnalyzeResult {
     counted: undefined,
     scanCount: undefined,
     payloadType: undefined,
-    source: item.source
+    source: item.source,
+    verificationStatus: item.verificationStatus,
+    historical: true
   };
 }
 
@@ -111,12 +110,15 @@ function SkeletonRow() {
   );
 }
 
-function VerdictBadge({ verdict }: { verdict: string }) {
-  const styles = verdictStyles[verdict] ?? verdictStyles.warn;
+function VerdictBadge({ result }: { result: AnalyzeResult }) {
+  const display = getScanVerdictDisplay(result);
+  const styles = verdictStyles[display.tone];
 
   return (
     <View className={`rounded-web border px-3 py-2 ${styles.badge}`}>
-      <Text className={`font-display text-xs uppercase tracking-widest ${styles.text}`}>{styles.label}</Text>
+      <Text className={`font-display text-xs uppercase tracking-widest ${styles.text}`} style={{ maxWidth: 140, textAlign: "center" }}>
+        {display.label}
+      </Text>
     </View>
   );
 }
@@ -180,7 +182,7 @@ export default function AnalyzeScreen() {
             </Text>
           </View>
           <View className="items-center justify-center self-stretch">
-            <VerdictBadge verdict={result.verdict} />
+            <VerdictBadge result={result} />
           </View>
         </View>
 
