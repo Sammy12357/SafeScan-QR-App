@@ -1,6 +1,6 @@
 import * as SecureStore from "expo-secure-store";
 import { create } from "zustand";
-import { api, clearApiTokens, setApiTokens, type User } from "@/services/api";
+import { api, clearApiTokens, SafeScanApiError, setApiTokens, type AgeChallenge, type User } from "@/services/api";
 import { roleForEmail } from "@/constants/config";
 
 const AUTH_TOKEN_KEY = "auth_token";
@@ -10,27 +10,18 @@ type AuthState = {
   user: User | null;
   walletAddress: string | null;
   isAuthenticated: boolean;
-  // Bumped every time a new backend access token is seeded into the API client.
-  // Screens that fetched protected data BEFORE the token arrived watch this and
-  // refetch when it changes — that's how we recover from the sign-in race where
-  // local auth flips true while exchangeAuth0IdToken is still in flight.
+  // Bumped when a verified backend session starts or ends so protected screens
+  // refresh only after authorization is established.
   apiSessionVersion: number;
   hasBackendSession: boolean;
+  ageChallenge: AgeChallenge | null;
   isLoading: boolean;
   error: string | null;
 };
 
-type Auth0UserClaims = {
-  sub?: string;
-  email?: string;
-  name?: string;
-  picture?: string;
-};
-
 type AuthStore = AuthState & {
-  loginWithGoogle: (idToken: string) => Promise<void>;
-  loginWithAuth0: (claims: Auth0UserClaims) => void;
   exchangeAuth0IdToken: (idToken: string) => Promise<void>;
+  completeAgeChallenge: (birthYear: number, birthdayThisYear: "yes" | "no") => Promise<void>;
   continueAsDemoUser: () => void;
   logout: () => Promise<void>;
   hydrateFromStorage: () => Promise<void>;
@@ -44,6 +35,7 @@ const initialState: AuthState = {
   isAuthenticated: false,
   apiSessionVersion: 0,
   hasBackendSession: false,
+  ageChallenge: null,
   isLoading: true,
   error: null
 };
@@ -52,36 +44,18 @@ function normalizeUser(user: User): User {
   return { ...user, role: roleForEmail(user.email) };
 }
 
-function decodeIdTokenClaims(idToken: string): Record<string, string | undefined> | null {
-  try {
-    const b64 = idToken.split(".")[1].replace(/-/g, "+").replace(/_/g, "/");
-    return JSON.parse(atob(b64)) as Record<string, string | undefined>;
-  } catch {
-    return null;
-  }
+async function clearStoredSession() {
+  clearApiTokens();
+  await Promise.all([
+    SecureStore.deleteItemAsync(AUTH_TOKEN_KEY).catch(() => {}),
+    SecureStore.deleteItemAsync(REFRESH_TOKEN_KEY).catch(() => {})
+  ]);
 }
 
 export const useAuthStore = create<AuthStore>((set, get) => ({
   ...initialState,
-  loginWithAuth0: (claims) => {
-    const email = claims.email ?? "";
-    set({
-      user: normalizeUser({
-        id: claims.sub ?? email,
-        email,
-        name: claims.name ?? (email ? email.split("@")[0] : "SafeScan User"),
-        avatarUrl: claims.picture ?? undefined,
-        createdAt: new Date().toISOString(),
-        role: "user"
-      }),
-      walletAddress: null,
-      isAuthenticated: true,
-      isLoading: false,
-      error: null
-    });
-  },
   continueAsDemoUser: () => {
-    clearApiTokens();
+    void clearStoredSession();
     set({
       user: normalizeUser({
         id: "demo-user",
@@ -94,16 +68,27 @@ export const useAuthStore = create<AuthStore>((set, get) => ({
       walletAddress: null,
       isAuthenticated: true,
       hasBackendSession: false,
+      ageChallenge: null,
       isLoading: false,
       error: null
     });
   },
   exchangeAuth0IdToken: async (idToken) => {
-    // Trade the Auth0-signed idToken for a SafeScan backend session so all
-    // require_user endpoints stop 401-ing. Backend dispatches Google vs Auth0
-    // by JWT issuer (see hackabull.py /auth/verify).
+    // The backend can require an age answer before issuing any account session.
     try {
       const result = await api.auth.verifyToken(idToken);
+      if ("ageConfirmationRequired" in result) {
+        await clearStoredSession();
+        set({
+          user: null,
+          isAuthenticated: false,
+          hasBackendSession: false,
+          ageChallenge: result,
+          isLoading: false,
+          error: null
+        });
+        return;
+      }
       await Promise.all([
         SecureStore.setItemAsync(AUTH_TOKEN_KEY, result.accessToken),
         SecureStore.setItemAsync(REFRESH_TOKEN_KEY, result.refreshToken)
@@ -115,22 +100,24 @@ export const useAuthStore = create<AuthStore>((set, get) => ({
         user: normalizeUser({ ...(state.user ?? {}), ...result.user } as User),
         isAuthenticated: true,
         hasBackendSession: true,
+        ageChallenge: null,
         apiSessionVersion: state.apiSessionVersion + 1,
         isLoading: false,
         error: null
       }));
     } catch (error) {
       const message = error instanceof Error ? error.message : "SafeScan backend rejected the Auth0 token.";
-      // Don't blow away local identity — useGoogleAuth may decode the idToken
-      // claims and call loginWithAuth0 as a fallback so the UI is still usable.
-      set({ error: message, hasBackendSession: false });
+      await clearStoredSession();
+      set({ user: null, isAuthenticated: false, hasBackendSession: false, ageChallenge: null, isLoading: false, error: message });
       throw error;
     }
   },
-  loginWithGoogle: async (idToken) => {
+  completeAgeChallenge: async (birthYear, birthdayThisYear) => {
+    const challenge = get().ageChallenge;
+    if (!challenge) throw new Error("Start sign-in again to confirm your age.");
     set({ isLoading: true, error: null });
     try {
-      const result = await api.auth.verifyToken(idToken);
+      const result = await api.auth.confirmAge(challenge.ageTicket, birthYear, birthdayThisYear);
       await Promise.all([
         SecureStore.setItemAsync(AUTH_TOKEN_KEY, result.accessToken),
         SecureStore.setItemAsync(REFRESH_TOKEN_KEY, result.refreshToken)
@@ -141,41 +128,19 @@ export const useAuthStore = create<AuthStore>((set, get) => ({
         walletAddress: null,
         isAuthenticated: true,
         hasBackendSession: true,
+        ageChallenge: null,
         apiSessionVersion: state.apiSessionVersion + 1,
         isLoading: false,
         error: null
       }));
-    } catch (backendError) {
-      // Backend is unreachable (Render cold-start, network error, etc.).
-      // Decode the Google ID token locally so users can browse without waiting
-      // for the backend to wake up.
-      const claims = decodeIdTokenClaims(idToken);
-      if (claims?.email) {
-        set({
-          user: normalizeUser({
-            id: claims.sub ?? claims.email,
-            email: claims.email,
-            name: claims.name ?? claims.email.split("@")[0],
-            avatarUrl: claims.picture ?? undefined,
-            createdAt: new Date().toISOString(),
-            role: "user"
-          }),
-          walletAddress: null,
-          isAuthenticated: true,
-          hasBackendSession: false,
-          isLoading: false,
-          error: null
-        });
+    } catch (error) {
+      const status = error instanceof SafeScanApiError ? error.status : 0;
+      if (status === 403 || status === 409 || status === 410) {
+        set({ ageChallenge: null, isLoading: false, error: "Age confirmation could not be completed. Start sign-in again later." });
       } else {
-        const message = backendError instanceof Error ? backendError.message : "SafeScan sign-in failed.";
-        clearApiTokens();
-        await Promise.all([
-          SecureStore.deleteItemAsync(AUTH_TOKEN_KEY).catch(() => {}),
-          SecureStore.deleteItemAsync(REFRESH_TOKEN_KEY).catch(() => {})
-        ]);
-        set({ ...initialState, isLoading: false, error: message });
-        throw backendError;
+        set({ isLoading: false, error: error instanceof Error ? error.message : "Age confirmation failed. Try again." });
       }
+      throw error;
     }
   },
   logout: async () => {
