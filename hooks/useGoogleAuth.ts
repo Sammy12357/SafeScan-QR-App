@@ -13,24 +13,13 @@ WebBrowser.maybeCompleteAuthSession();
 const EXPO_GO_AUTH0_REDIRECT_URI = "https://auth.expo.io/@fellowbeast/safescan-android/";
 const EXPO_PROXY_START_URL = "https://auth.expo.io/@fellowbeast/safescan-android/start";
 
-function getExpoHostUri() {
-  const hostUri =
-    Constants.expoConfig?.hostUri ??
-    Constants.manifest2?.extra?.expoClient?.hostUri ??
-    Constants.manifest?.debuggerHost;
-
-  return hostUri?.replace(/^https?:\/\//, "").replace(/\/.*$/, "").replace(/\/$/, "");
-}
-
 function getAuthRedirectUri() {
   if (Constants.executionEnvironment === "storeClient") {
     return EXPO_GO_AUTH0_REDIRECT_URI;
   }
 
-  const hostUri = getExpoHostUri();
-  if (hostUri) return `exp://${hostUri}/--/auth`;
   return AuthSession.makeRedirectUri({
-    path: "auth"
+    native: "safescan://auth"
   });
 }
 

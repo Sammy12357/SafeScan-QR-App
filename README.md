@@ -53,7 +53,7 @@ Core flows:
 
 Guest camera scans of direct web URLs use the public `/api/analyze` JSON endpoint. Payment and app-action payloads and image uploads require a backend sign-in. A failed or incomplete backend check never becomes a demo SAFE verdict.
 
-The mobile sign-in client uses the `safe-scan-qr.us.auth0.com` tenant and its Native application. The SafeScan backend validates the Auth0 issuer and client ID before creating a session. In the Auth0 dashboard, leave `google-oauth2` enabled for the mobile application and `Username-Password-Authentication` disabled. The Auth0 Allowed Callback URLs must include `safescan://auth` and the Expo Go proxy URL when testing with Expo Go.
+The mobile sign-in client uses the `safe-scan-qr.us.auth0.com` tenant and its Native application. The SafeScan backend validates the Auth0 issuer and client ID before creating a session. In the Auth0 dashboard, leave `google-oauth2` enabled for the mobile application and `Username-Password-Authentication` disabled. Native builds use the registered `safescan://auth` callback; Expo Go uses the `https://auth.expo.io/@fellowbeast/safescan-android/` proxy callback. Both must remain in the application's Allowed Callback URLs.
 
 ## Development Phases
 
