@@ -46,12 +46,14 @@ Core flows:
 - Analyze payloads through `/api/analyze`.
 - Show a full-screen risk verdict and signal breakdown.
 - Track scan history.
-- Connect Google OAuth.
+- Sign in with Google through the SafeScan Auth0 tenant.
 - Connect a Solana mobile wallet.
 - Show airdrop tier progress.
 - Share scan reports and referral links.
 
 Guest camera scans of direct web URLs use the public `/api/analyze` JSON endpoint. Payment and app-action payloads and image uploads require a backend sign-in. A failed or incomplete backend check never becomes a demo SAFE verdict.
+
+The mobile sign-in client uses the `safe-scan-qr.us.auth0.com` tenant and its Native application. The SafeScan backend validates the Auth0 issuer and client ID before creating a session. In the Auth0 dashboard, leave `google-oauth2` enabled for the mobile application and `Username-Password-Authentication` disabled. The Auth0 Allowed Callback URLs must include `safescan://auth` and the Expo Go proxy URL when testing with Expo Go.
 
 ## Development Phases
 

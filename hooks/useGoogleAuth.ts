@@ -1,22 +1,17 @@
 import { useCallback, useState } from "react";
 import * as AuthSession from "expo-auth-session";
 import Constants from "expo-constants";
+import * as Crypto from "expo-crypto";
 import * as WebBrowser from "expo-web-browser";
+import { AUTH0_CLIENT_ID, AUTH0_DOMAIN } from "@/constants/auth0";
 import { SafeScanApiError } from "@/services/api";
 import { useAuthStore } from "@/stores/authStore";
+import { getAuthParam, hasExpectedAuthState } from "@/utils/auth0Redirect";
 
 WebBrowser.maybeCompleteAuthSession();
 
-const AUTH0_DOMAIN = "dev-vnllaqnkkegs4xni.us.auth0.com";
-const AUTH0_CLIENT_ID = "1XfWxWOtDtN18JCCztRehzcJ1jOSBBic";
 const EXPO_GO_AUTH0_REDIRECT_URI = "https://auth.expo.io/@fellowbeast/safescan-android/";
 const EXPO_PROXY_START_URL = "https://auth.expo.io/@fellowbeast/safescan-android/start";
-
-function getAuthParam(url: string, key: string) {
-  const queryString = url.includes("?") ? url.split("?")[1].split("#")[0] : "";
-  const hashString = url.includes("#") ? url.split("#")[1] : "";
-  return new URLSearchParams(queryString).get(key) ?? new URLSearchParams(hashString).get(key);
-}
 
 function getExpoHostUri() {
   const hostUri =
@@ -40,7 +35,8 @@ function getAuthRedirectUri() {
 }
 
 // Auth0 Universal Login pre-targeted at Google. The flow is:
-//   1. Auth0 returns Credentials with an idToken (JWT signed by SafeScan tenant).
+//   1. Auth0 returns an ID token in the callback fragment, with the same state
+//      generated for this sign-in attempt.
 //   2. The backend either returns a SafeScan session or a short-lived age
 //      challenge. A challenge never creates an app session.
 //   3. The age response is submitted to SafeScan before entering account
@@ -60,6 +56,7 @@ export function useGoogleAuth() {
     setIsLoading(true);
     try {
       const redirectUri = getAuthRedirectUri();
+      const state = Crypto.randomUUID();
       const authUrl =
         `https://${AUTH0_DOMAIN}/authorize?` +
         new URLSearchParams({
@@ -68,7 +65,8 @@ export function useGoogleAuth() {
           response_type: "id_token",
           scope: "openid profile email",
           connection: "google-oauth2",
-          nonce: String(Date.now())
+          nonce: Crypto.randomUUID(),
+          state
         }).toString();
 
       const returnUrl = Constants.executionEnvironment === "storeClient" ? AuthSession.getDefaultReturnUrl() : redirectUri;
@@ -79,6 +77,11 @@ export function useGoogleAuth() {
       const result = await WebBrowser.openAuthSessionAsync(browserUrl, returnUrl);
       if (result.type !== "success") {
         if (result.type === "cancel") setError("Sign-in was cancelled.");
+        return;
+      }
+
+      if (!hasExpectedAuthState(result.url, state)) {
+        setError("Sign-in could not be verified. Please try again.");
         return;
       }
 

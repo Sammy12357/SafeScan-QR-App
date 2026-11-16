@@ -95,7 +95,7 @@ android {
         versionCode 1
         versionName "1.0.0"
         manifestPlaceholders = [
-            auth0Domain: "dev-vnllaqnkkegs4xni.us.auth0.com",
+            auth0Domain: "safe-scan-qr.us.auth0.com",
             auth0Scheme: "safescanauth0"
         ]
 

@@ -43,7 +43,7 @@
         <action android:name="android.intent.action.VIEW"/>
         <category android:name="android.intent.category.DEFAULT"/>
         <category android:name="android.intent.category.BROWSABLE"/>
-        <data android:scheme="safescanauth0" android:host="dev-vnllaqnkkegs4xni.us.auth0.com" android:pathPrefix="/android/com.safescan.qr/callback"/>
+        <data android:scheme="safescanauth0" android:host="safe-scan-qr.us.auth0.com" android:pathPrefix="/android/com.safescan.qr/callback"/>
       </intent-filter>
     </activity>
   </application>
